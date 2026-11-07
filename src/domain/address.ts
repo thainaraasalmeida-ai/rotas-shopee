@@ -51,7 +51,7 @@ export function splitStreetNumber(line: string): { street: string; number: strin
 export function inferPropertyType(text: string): PropertyType {
   const t = ` ${stripAccents(text).toLowerCase()} `;
   const rules: [PropertyType, RegExp][] = [
-    ['comercio', /\b(loja|academia|lava ?jato|escola|galpao|brecho|mercado|padaria|farmacia|oficina|empresa|ltda|comercio|restaurante|bar|salao|clinica|igreja|lar|escritorio|mprint|ortopedia|chaveiro|legumes|sacolao|consultorio)\b/],
+    ['comercio', /\b(loja|academia|lava ?jato|escola|galpao|brecho|mercado|padaria|farmacia|oficina|empresa|ltda|comercio|restaurante|bar|salao|clinica|igreja|lar|escritorio|mprint|ortopedia|chaveiro|legumes|sacolao|consultorio|concessionaria|distribuicao|distribuidora)\b/],
     ['predio', /\b(ap|apt|apto|apart|aparts|apartamento|predio|edificio|bloco|bl|torre|cobertura)\b|\bap\s?\d/],
     ['casa', /\b(casa|cs)\b/],
   ];

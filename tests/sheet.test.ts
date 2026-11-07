@@ -25,7 +25,8 @@ describe('planilha', () => {
     expect(b.packages.length).toBe(2);
     expect(b.complement).toContain('Apto 304');
     expect(b.notes).toBe('Portão azul');
-    expect(b.packages[1].label).toBe('BR2611000005'); // sem sequência: usa rastreio, sem inventar número
+    expect(b.packages[1].label).toBe('+1'); // sem sequência: pacote adicional sem número (rastreio guardado)
+    expect(b.packages[1].tracking).toBe('BR2611000005');
   });
   it('lê xlsx', async () => {
     const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -34,5 +35,23 @@ describe('planilha', () => {
     const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     const read = await readSheetFile(buf);
     expect(parseSheetRows(read, 'x').stops.length).toBe(2);
+  });
+});
+
+import { cleanStreet } from '../src/importers/spreadsheet';
+describe('limpeza de rua', () => {
+  it('remove "Fundos" e "Bairro X" do nome da rua', () => {
+    expect(cleanStreet('Rua Exemplo Fundos')).toEqual({ street: 'Rua Exemplo', extra: 'Fundos' });
+    expect(cleanStreet('R Exemplo Bairro Centro').street).toBe('R Exemplo');
+    expect(cleanStreet('Rua Exemplo').street).toBe('Rua Exemplo');
+  });
+  it('"-" na sequência vira pacote +1 sem número', () => {
+    const r = parseSheetRows([
+      ['Sequence', 'SPX TN', 'Destination Address'],
+      ['1', 'BR1', 'Rua Exemplo, 10'],
+      ['-', 'BR2', 'Rua Exemplo, 10'],
+    ], 'x');
+    expect(r.stops[0].packages.map((p) => p.label)).toEqual(['#1', '+1']);
+    expect(r.stops[0].packages[1].tracking).toBe('BR2');
   });
 });

@@ -79,9 +79,19 @@ function parseFullAddress(full: string, extraDrop: string[] = []): { street: str
   const { street, number } = splitStreetNumber(parts.slice(0, 2).join(', '));
   const rest = parts.slice(number ? 2 : 1).filter((p) => {
     const n = norm(p);
-    return n && !['bom retiro', 'ipatinga', 'mg', 'minas gerais', 'brasil', 'brazil', ...extraDrop.map(norm)].includes(n);
+    return n && !/^bairro /.test(n) && !['bom retiro', 'ipatinga', 'mg', 'minas gerais', 'brasil', 'brazil', 'n a', 'na', 's n', ...extraDrop.map(norm)].includes(n);
   });
   return { street, number, complement: rest.join(', '), zip };
+}
+
+export function cleanStreet(street: string): { street: string; extra: string } {
+  let st = street.trim();
+  const extras: string[] = [];
+  const bairro = st.match(/\s+bairro\s+.+$/i);
+  if (bairro) st = st.slice(0, bairro.index).trim();
+  const tail = st.match(/\s+(fundos|frente|casa\s*\w?|apto?\.?\s*\d+\w*|loja\s*\d*|s\/?n)$/i);
+  if (tail) { extras.push(tail[1]); st = st.slice(0, tail.index).trim(); }
+  return { street: st, extra: extras.join(', ') };
 }
 
 export function parseSheetRows(rows: unknown[][], fileName: string, override?: { headerRow: number; mapping: Mapping }): ImportResult & { headerRow: number; mapping: Mapping; headers: string[] } {
@@ -90,6 +100,7 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
   const byKey = new Map<string, Stop>();
   const stops: Stop[] = [];
   const issues: ImportResult['issues'] = [];
+  const noSeq: string[] = [];
 
   if (mapping.address === undefined) {
     issues.push({ level: 'erro', message: 'Não encontrei a coluna de endereço. Ajuste o mapeamento das colunas.' });
@@ -109,6 +120,10 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
       const p = parseFullAddress(addrCell, [cell(row, mapping.district), cell(row, mapping.city)].filter(Boolean));
       street = p.street; number = p.number; compFromAddr = p.complement; zip = zip ?? p.zip;
     }
+    // Limpa sobras no nome da rua ("Rua X Fundos", "R X Bairro Bom Retiro") e leva para o complemento.
+    const cleaned = cleanStreet(street);
+    street = cleaned.street;
+    if (cleaned.extra) compFromAddr = [cleaned.extra, compFromAddr].filter(Boolean).join(', ');
     const complement = [cell(row, mapping.complement), compFromAddr].filter(Boolean).join(' · ');
     const notes = cell(row, mapping.notes);
     const address = {
@@ -138,7 +153,11 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
     const tokens = parseLabelTokens(asTokens);
     let pkgs: Package[];
     if (tokens.length) pkgs = tokensToPackages(tokens, `${stop.id}-r${r}`);
-    else pkgs = [{ id: `${stop.id}-r${r}`, label: tracking || labelCell || `Linha ${r + 1}`, number: null, extra: false, status: 'pending' }];
+    else if (mapping.label !== undefined && /^[\s\-–—_.]*$/.test(labelCell)) {
+      // Sequência vazia ou "-": pacote SEM número (equivale ao "+1"). Não inventamos número.
+      pkgs = tokensToPackages([{ kind: 'extra', value: 1 }], `${stop.id}-r${r}`);
+      noSeq.push(tracking || `linha ${r + 1}`);
+    } else pkgs = [{ id: `${stop.id}-r${r}`, label: tracking || labelCell || `Linha ${r + 1}`, number: null, extra: false, status: 'pending' }];
     pkgs.forEach((p) => { p.tracking = tracking || undefined; p.complement = complement || undefined; });
 
     const qty = parseInt(cell(row, mapping.qty), 10);
@@ -157,6 +176,7 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
       stop.geo = { lat, lng, precision: 'shopee', verified: false, source: 'Planilha Shopee' };
     }
   }
+  if (noSeq.length) issues.push({ level: 'aviso', message: `${noSeq.length} pacote(s) sem número de sequência na planilha (aparecem como "+1"): ${noSeq.join(', ')}.` });
   // Coordenada idêntica para endereços diferentes = ponto aproximado da Shopee (não aponta o imóvel).
   const byCoord = new Map<string, Stop[]>();
   for (const s of stops) if (s.geo) {
