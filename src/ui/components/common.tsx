@@ -25,11 +25,11 @@ export function Chips({ packages, color, onlyPending, highlight }: { packages: P
           {p.label}
         </span>
       ))}
-      {extras.length ? (
-        <span className={`chip chip-extra st-${extras.every((p) => p.status !== 'pending') ? extras[0].status : 'pending'}`} title="Pacote(s) adicional(is) sem número">
-          {compactLabels(extras)[0]}
+      {compactLabels(extras).map((lbl) => (
+        <span key={lbl} className={`chip chip-extra st-${extras.every((p) => p.status !== 'pending') ? extras[0].status : 'pending'}`} title="Pacote sem número">
+          {lbl}
         </span>
-      ) : null}
+      ))}
     </span>
   );
 }

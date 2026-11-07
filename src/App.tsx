@@ -11,7 +11,7 @@ type Tab = 'importar' | 'separar' | 'entregar' | 'rota' | 'relatorio';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'importar', label: 'Importar', icon: '⬆' },
   { id: 'separar', label: 'Separar', icon: '▦' },
-  { id: 'entregar', label: 'Entregar', icon: '➤' },
+  { id: 'entregar', label: 'Iniciar rota', icon: '➤' },
   { id: 'rota', label: 'Rota', icon: '⌖' },
   { id: 'relatorio', label: 'Relatório', icon: '☰' },
 ];

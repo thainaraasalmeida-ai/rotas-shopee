@@ -28,3 +28,12 @@ export function wazeLink(stop: Stop): WazeLink {
     hint: 'Waze pelo endereço',
   };
 }
+
+/** Alternativa ao Waze: Google Maps com rota de carro até a parada. */
+export function googleMapsLink(stop: Stop): string {
+  const g = stop.geo;
+  const dest = g && g.precision !== 'rua' && g.precision !== 'aproximado'
+    ? `${g.lat.toFixed(6)},${g.lng.toFixed(6)}`
+    : formatAddress(effectiveAddress(stop));
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`;
+}

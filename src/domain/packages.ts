@@ -56,11 +56,18 @@ export function compactLabels(pkgs: Package[]): string[] {
   const out: string[] = [];
   let extras = 0;
   for (const p of pkgs) {
-    if (p.extra) extras++;
+    if (p.extra && /^\+\d+$/.test(p.label) && p.label !== '+1') out.push(p.label); // etiqueta própria (+2, +3, +4…)
+    else if (p.extra) extras++;
     else out.push(p.label);
   }
   if (extras) out.push(`+${extras}`);
   return out;
+}
+
+/** Texto da etiqueta de um pacote: "#113", "+1", ou a etiqueta própria "+3". */
+export function shortLabel(p: Package): string {
+  if (!p.extra) return p.label;
+  return /^\+\d+$/.test(p.label) ? p.label : '+1';
 }
 
 export function pendingCount(pkgs: Package[]): number {

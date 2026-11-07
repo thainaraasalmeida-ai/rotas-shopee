@@ -87,7 +87,8 @@ export const useStore = create<State>()(
         }
         const groupCount = r.groups.length || get().settings.groupCount;
         const specials: Record<string, SpecialKind> = {};
-        for (const id of detectCollectionPoints(r.stops, get().settings.collectionThreshold)) specials[id] = 'auto';
+        // PDF já organizado em grupos (ex.: rota do Thiago): NÃO cria grupos novos — a separação física já foi feita.
+        if (!r.groups.length) for (const id of detectCollectionPoints(r.stops, get().settings.collectionThreshold)) specials[id] = 'auto';
         const session: Session = {
           id: `sess-${Date.now()}`,
           createdAt: Date.now(),
@@ -142,6 +143,10 @@ export const useStore = create<State>()(
       applyAutoSpecials() {
         const s = get().session;
         if (!s) return;
+        if (s.source === 'pdf' && s.plan.method === 'importado' && s.specials === undefined) {
+          set({ session: { ...s, specials: {}, specialDeclined: [], suggestionsDismissed: [] } });
+          return;
+        }
         const specials: Record<string, SpecialKind> = {};
         for (const [id, k] of Object.entries(s.specials ?? {})) if (k === 'manual') specials[id] = k;
         for (const id of detectCollectionPoints(Object.values(s.stops), get().settings.collectionThreshold, s.specialDeclined ?? [])) if (!specials[id]) specials[id] = 'auto';
@@ -270,7 +275,8 @@ export function nextStopId(s: Session, afterId?: string): string | undefined {
 }
 
 export function currentStopId(s: Session): string | undefined {
-  if (s.cursor && s.stops[s.cursor] && isPending(s.stops[s.cursor])) return s.cursor;
+  // O cursor pode apontar para uma parada já marcada (ao "Voltar à parada anterior").
+  if (s.cursor && s.stops[s.cursor]) return s.cursor;
   return nextStopId(s, undefined);
 }
 

@@ -46,6 +46,8 @@ export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportR
   let current: Stop | null = null;
   let currentGroup: Group | null = null;
   let subLines: string[] = [];
+  const allTokens = new Map<string, ReturnType<typeof parseLabelTokens>>();
+  const declaredQtys = new Map<string, number>();
 
   const flushSub = () => {
     if (!current) return;
@@ -81,7 +83,7 @@ export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportR
         continue;
       }
     }
-    if (/^abrir no maps/i.test(line)) continue;
+    if (/^abrir no maps/i.test(line) || /^confer[eê]ncia:/i.test(line)) continue;
 
     const tokens = parseLabelTokens(line);
     const text = line.replace(LABEL_STRIP, ' ').replace(/\s+/g, ' ').trim();
@@ -89,8 +91,16 @@ export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportR
     if (sm) {
       flushSub();
       const seq = parseInt(sm[1], 10);
-      const { street, number } = splitStreetNumber(sm[2]);
+      // Quantidade declarada no fim da linha (PDF do Thiago: "... #28 #29 +1   3").
+      let body = sm[2];
+      let declaredQty: number | undefined;
+      const qm = body.match(/^(.*?,\s*\d+[A-Za-z]?)\s+(\d{1,3})$/);
+      if (qm) { body = qm[1]; declaredQty = parseInt(qm[2], 10); }
+      const { street, number } = splitStreetNumber(body);
       const id = `s${seq}-${stops.length}`;
+      const pkgs = tokensToPackages(tokens, id);
+      allTokens.set(id, [...tokens]);
+      if (declaredQty !== undefined) declaredQtys.set(id, declaredQty);
       current = {
         id,
         original: { street, number, raw: sm[2], ...DEFAULT_REGION },
@@ -98,7 +108,7 @@ export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportR
         notes: '',
         propertyType: 'desconhecido',
         propertyTypeSource: 'nenhum',
-        packages: tokensToPackages(tokens, id),
+        packages: pkgs,
         importedGroup: currentGroup?.index,
         importedSeq: seq,
         flags: [],
@@ -108,11 +118,29 @@ export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportR
       continue;
     }
     if (current) {
+      if (tokens.length) allTokens.get(current.id)?.push(...tokens);
       if (tokens.length) current.packages.push(...tokensToPackages(tokens, `${current.id}-c${current.packages.length}`));
       if (text) subLines.push(text);
     }
   }
   flushSub();
+
+  // "+2" pode ser ETIQUETA de um pacote sem número (rotas que numeram +1…+4) ou 2 pacotes adicionais.
+  // Quando o arquivo declara a quantidade da parada, ela decide. Sem quantidade, "+N" = N pacotes.
+  for (const st of stops) {
+    const q = declaredQtys.get(st.id);
+    const toks = allTokens.get(st.id) ?? [];
+    const nNum = toks.filter((t) => t.kind === 'number').length;
+    const nExtra = toks.filter((t) => t.kind === 'extra').length;
+    if (q !== undefined && nExtra && st.packages.length !== q && nNum + nExtra === q) {
+      st.packages = toks.map((t, i) => t.kind === 'number'
+        ? { id: `${st.id}-n${t.value}`, label: `#${t.value}`, number: t.value, extra: false, status: 'pending' as const }
+        : { id: `${st.id}-x${i}`, label: `+${t.value}`, number: null, extra: true, status: 'pending' as const });
+    }
+    if (q !== undefined && st.packages.length !== q) {
+      st.flags.push(`O arquivo informa ${q} pacote(s) nesta parada, mas foram lidas ${st.packages.length} etiqueta(s).`);
+    }
+  }
 
   const result: ImportResult = { source: 'pdf', fileName, title, stops, groups, issues: [], declared };
   result.issues = validateImport(result, declaredGroups);

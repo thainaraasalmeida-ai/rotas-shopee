@@ -3,7 +3,8 @@ import { auditLeaving, type AuditAlert } from '../../audit/audit';
 import { effectiveAddress, formatAddress, PROPERTY_LABEL } from '../../domain/address';
 import { colorOf } from '../../domain/colors';
 import type { Stop } from '../../domain/types';
-import { wazeLink } from '../../integrations/waze';
+import { shortLabel } from '../../domain/packages';
+import { googleMapsLink, wazeLink } from '../../integrations/waze';
 import { currentStopId, groupOfStop, isPending, nextStopId, orderedStops, useStore } from '../../store/store';
 import { Chips, GroupBadge, MethodBanner, Modal } from '../components/common';
 import { geoText, StopEditor } from '../components/StopEditor';
@@ -64,13 +65,14 @@ export function DeliveryScreen() {
     advance(cur.id, true);
   };
 
-  const continueAnyway = () => {
-    if (!alerts || !justification.trim()) return;
+  const continueAnyway = (why?: string) => {
+    const justification2 = (why ?? justification).trim();
+    if (!alerts || !justification2) return;
     const ids = [...new Set(alerts.list.flatMap((a) => a.stopIds))];
     store.addAudit({
       at: Date.now(),
       kind: alerts.list.some((a) => a.kind === 'antes-de-atravessar') ? 'atravessou-com-pendencia' : 'saiu-com-pendencia',
-      stopId: alerts.from, justification: justification.trim(), pendingStopIds: ids,
+      stopId: alerts.from, justification: justification2, pendingStopIds: ids,
     });
     store.setCursor(alerts.next);
     setAlerts(null);
@@ -96,6 +98,9 @@ export function DeliveryScreen() {
   const addr = effectiveAddress(cur);
   const waze = wazeLink(cur);
   const pos = session.plan.order.indexOf(cur.id) + 1;
+  const doneHere = !isPending(cur);
+  const threshold = store.settings.collectionThreshold;
+  const isCollection = !!group?.special || cur.packages.length >= threshold;
   const upcoming: string[] = [];
   let probe: string | undefined = cur.id;
   for (let i = 0; i < 4; i++) {
@@ -106,13 +111,26 @@ export function DeliveryScreen() {
 
   return (
     <div className="screen">
+      <h2 className="stop-count">Parada {pos} de {all.length}</h2>
       <div className="progress"><div style={{ width: `${(donePk / totalPk) * 100}%` }} /></div>
-      <div className="muted small">Parada {pos} de {all.length} · {doneStops} concluídas · {donePk}/{totalPk} pacotes</div>
-      {session.plan.method !== 'malha-viaria' ? <MethodBanner method={session.plan.method} stale={session.plan.stale} /> : null}
+      <div className="muted small">{doneStops} paradas concluídas · {donePk} de {totalPk} pacotes marcados</div>
+      {session.plan.method === 'linha-reta' ? <MethodBanner method={session.plan.method} stale={session.plan.stale} /> : null}
 
       <div className="card" style={{ borderColor: c?.bg }}>
         <GroupBadge group={group} big />
         {session.skipped.includes(cur.id) ? <div className="warn">Esta parada foi pulada antes.</div> : null}
+        {doneHere ? (
+          <div className={cur.packages.every((p) => p.status === 'delivered') ? 'ok' : 'err'}>
+            <b>Parada já marcada:</b> {cur.packages.filter((p) => p.status === 'delivered').length} entregue(s), {cur.packages.filter((p) => p.status === 'failed').length} não entregue(s).
+            <div className="row wrap" style={{ marginTop: 8 }}>
+              <button className="btn small" onClick={() => store.setPackagesStatus(cur.id, 'pending', { packageIds: cur.packages.map((p) => p.id) })}>Desfazer marcação</button>
+              <button className="btn small" onClick={() => store.setCursor(nextStopId(session, cur.id))}>Ir para a próxima pendente</button>
+            </div>
+          </div>
+        ) : null}
+        {isCollection ? (
+          <div className="coleta">PONTO DE COLETA · {cur.packages.length} pacotes{group ? ` · sacola exclusiva${group.special ? '' : ` dentro do Grupo ${group.index}`}` : ''}</div>
+        ) : null}
         <div className="labels-big" style={{ color: c?.bg }}>
           {cur.packages.map((p) => (
             <button
@@ -121,7 +139,7 @@ export function DeliveryScreen() {
               disabled={p.status !== 'pending'}
               onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
             >
-              {p.extra ? '+1' : p.label}
+              {shortLabel(p)}
             </button>
           ))}
         </div>
@@ -138,13 +156,15 @@ export function DeliveryScreen() {
         </dl>
         {cur.flags.map((f) => <div key={f} className="warn">{f}</div>)}
 
-        <a className="btn waze big" href={waze.url} target="_blank" rel="noopener noreferrer">Abrir no Waze</a>
+        <a className="btn waze big nav-big" href={waze.url} target="_blank" rel="noopener noreferrer">NAVEGAR NO WAZE</a>
+        <a className="btn big" href={googleMapsLink(cur)} target="_blank" rel="noopener noreferrer">Abrir no Google Maps</a>
         <div className="muted small center">{waze.hint} · {geoText(cur.geo)}</div>
 
         <div className="actions">
-          <button className="btn ok big" onClick={onDelivered}>✔ Entregue{selected.length ? ` (${selected.length})` : ''}</button>
-          <button className="btn danger" onClick={() => setFailOpen(true)}>✖ Não entregue{selected.length ? ` (${selected.length})` : ''}</button>
-          <button className="btn" onClick={onSkip}>Pular por enquanto</button>
+          <button className="btn ok big nav-big" disabled={doneHere} onClick={onDelivered}>✔ ENTREGA CONCLUÍDA{selected.length ? ` (${selected.length})` : ''}</button>
+          <button className="btn danger" disabled={doneHere} onClick={() => setFailOpen(true)}>✖ Não entregue{selected.length ? ` (${selected.length})` : ''}</button>
+          <button className="btn" disabled={doneHere} onClick={onSkip}>Pular parada</button>
+          <button className="btn wide" disabled={pos <= 1} onClick={() => { store.setCursor(session.plan.order[pos - 2]); window.scrollTo({ top: 0 }); }}>← Voltar à parada anterior</button>
         </div>
         <button className="link" onClick={() => setEditing(cur.id)}>Corrigir endereço / tipo de imóvel / fixar localização</button>
       </div>
@@ -184,7 +204,7 @@ export function DeliveryScreen() {
               <div className="row wrap">
                 {a.stopIds.slice(0, 4).map((id) => (
                   <button key={id} className="btn small" onClick={() => { store.setCursor(id); store.markSkipped(id, false); setAlerts(null); }}>
-                    Ir para {useStore.getState().session!.stops[id].packages.filter((p) => p.status === 'pending').map((p) => (p.extra ? '+1' : p.label)).join(' ')}
+                    Ir para {useStore.getState().session!.stops[id].packages.filter((p) => p.status === 'pending').map((p) => shortLabel(p)).join(' ')}
                   </button>
                 ))}
               </div>
@@ -192,7 +212,8 @@ export function DeliveryScreen() {
           ))}
           <div className="lbl">Ou continuar para a próxima parada com justificativa (as pendências continuam registradas):</div>
           <input value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Ex.: volto depois, portão fechado" />
-          <button className="btn big" disabled={!justification.trim()} onClick={continueAnyway}>Continuar mesmo assim</button>
+          <button className="btn big" disabled={!justification.trim()} onClick={() => continueAnyway()}>Continuar mesmo assim</button>
+          <button className="btn primary big" onClick={() => continueAnyway('Seguindo a ordem da rota (pendências ficam para depois)')}>Seguir a ordem da rota</button>
         </div>
       </Modal>
 

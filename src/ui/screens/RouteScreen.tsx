@@ -15,6 +15,8 @@ export function RouteScreen() {
   const [log, setLog] = useState<{ cls: string; text: string }[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const [guard, setGuard] = useState(false);
+  const fixedOrder = s.source === 'pdf' && s.plan.method === 'importado';
 
   const stops = orderedStops(s);
   const located = stops.filter((x) => x.geo);
@@ -91,7 +93,8 @@ export function RouteScreen() {
 
       <div className="stack">
         <button className="btn primary big" disabled={!!progress} onClick={() => run('geo')}>1. Localizar endereços {missing.length ? `(${missing.length})` : '✔'}</button>
-        <button className="btn primary big" disabled={!!progress || located.length < 2} onClick={() => run('opt')}>2. Otimizar pela malha viária</button>
+        <button className="btn primary big" disabled={!!progress || located.length < 2} onClick={() => (fixedOrder ? setGuard(true) : run('opt'))}>2. Otimizar pela malha viária</button>
+        {fixedOrder ? <div className="warn small">Esta rota segue a ordem e os grupos do PDF importado. Otimizar mudaria a ordem e os grupos — não use se os pacotes já estão separados no carro.</div> : null}
         {progress ? (
           <div className="info">
             {progress.step}{progress.total > 1 ? ` — ${progress.done}/${progress.total}` : '…'}
@@ -135,6 +138,15 @@ export function RouteScreen() {
               <span className="small">{formatAddress(effectiveAddress(x), false)} — {x.geo ? 'só a rua' : 'não localizado'}</span>
             </button>
           ))}
+        </div>
+      ) : null}
+      {guard ? (
+        <div className="modal-bg" onClick={() => setGuard(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Mudar a ordem do PDF?</h3>
+            <p>Os grupos e a sequência do arquivo serão substituídos. Se os pacotes já estão separados no carro pelos grupos do PDF, cancele.</p>
+            <div className="row"><button className="btn" onClick={() => setGuard(false)}>Cancelar (manter ordem do PDF)</button><button className="btn danger" onClick={() => { setGuard(false); run('opt'); }}>Otimizar mesmo assim</button></div>
+          </div>
         </div>
       ) : null}
       {editing ? <StopEditor stopId={editing} onClose={() => setEditing(null)} /> : null}

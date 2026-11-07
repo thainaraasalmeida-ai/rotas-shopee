@@ -62,10 +62,10 @@ export function validateImport(
 
   const extraStops = r.stops.filter((s) => s.packages.some((p) => p.extra));
   for (const s of extraStops) {
-    const n = s.packages.filter((p) => p.extra).length;
+    const ex = s.packages.filter((p) => p.extra);
     issues.push({
       level: 'info',
-      message: `${formatAddress(s.original, false)}: ${n} pacote(s) adicional(is) "+${n}" sem número — contado(s) no total (${s.packages.length} pacotes nesta parada).`,
+      message: `${formatAddress(s.original, false)}: ${ex.length} pacote(s) sem número (${[...new Set(ex.map((p) => p.label.split(' ')[0]))].join(' ')}) — contado(s) no total (${s.packages.length} pacotes nesta parada).`,
     });
   }
 
