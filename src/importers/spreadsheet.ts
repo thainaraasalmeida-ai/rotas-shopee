@@ -1,4 +1,4 @@
-import { addressKey, DEFAULT_REGION, inferPropertyType, splitStreetNumber, stripAccents } from '../domain/address';
+import { addressKey, DEFAULT_REGION, inferPropertyType, normalizeStreet, splitStreetNumber, stripAccents } from '../domain/address';
 import { parseLabelTokens, tokensToPackages } from '../domain/packages';
 import type { ImportResult, Package, Stop } from '../domain/types';
 import { validateImport } from './validate';
@@ -177,6 +177,23 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
     }
   }
   if (noSeq.length) issues.push({ level: 'aviso', message: `${noSeq.length} pacote(s) sem número de sequência na planilha (aparecem como "+1"): ${noSeq.join(', ')}.` });
+  // Ordem: pela menor sequência de cada endereço (a Shopee põe os pacotes sem número no topo da planilha).
+  // Endereço só com pacote sem número entra logo depois do vizinho mais próximo na mesma rua.
+  const minSeq = (s: Stop) => Math.min(...s.packages.filter((p) => p.number !== null).map((p) => p.number as number));
+  const numbered = stops.filter((s) => Number.isFinite(minSeq(s))).sort((a, b) => minSeq(a) - minSeq(b));
+  const orphans = stops.filter((s) => !Number.isFinite(minSeq(s)));
+  for (const o of orphans) {
+    const st = normalizeStreet(o.original.street);
+    const n = parseInt(o.original.number, 10) || 0;
+    let best = -1, bd = Infinity;
+    numbered.forEach((s, i) => {
+      if (normalizeStreet(s.original.street) !== st) return;
+      const d = Math.abs((parseInt(s.original.number, 10) || 0) - n);
+      if (d < bd) { bd = d; best = i; }
+    });
+    if (best >= 0) numbered.splice(best + 1, 0, o); else numbered.push(o);
+  }
+  stops.splice(0, stops.length, ...numbered);
   // Coordenada idêntica para endereços diferentes = ponto aproximado da Shopee (não aponta o imóvel).
   const byCoord = new Map<string, Stop[]>();
   for (const s of stops) if (s.geo) {

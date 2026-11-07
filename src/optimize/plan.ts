@@ -18,12 +18,15 @@ export function importedPlan(stops: Stop[], groups: Group[], groupCount: number)
   const order = stops.map((s) => s.id);
   let gs = groups;
   if (!gs.length) {
-    const per = Math.ceil(order.length / Math.max(1, groupCount));
-    gs = [];
-    for (let i = 0; i < order.length; i += per) {
-      const idx = gs.length + 1;
-      gs.push({ index: idx, colorKey: groupColorKey(idx), stopIds: order.slice(i, i + per) });
-    }
+    // Sem grupos no arquivo: corta a ordem do arquivo equilibrando PACOTES (não paradas) e sem partir uma rua.
+    const parts = splitIntoGroups({
+      packages: stops.map((s) => s.packages.length),
+      edgeSeconds: stops.slice(1).map(() => 0),
+      sameStreet: stops.slice(1).map((s, i) => normalizeStreet(effectiveAddress(s).street) === normalizeStreet(effectiveAddress(stops[i]).street)),
+      crossing: stops.slice(1).map(() => false),
+      k: groupCount,
+    });
+    gs = parts.map((p, i) => ({ index: i + 1, colorKey: groupColorKey(i + 1), stopIds: p.map((j) => order[j]) }));
   }
   return {
     method: 'importado',

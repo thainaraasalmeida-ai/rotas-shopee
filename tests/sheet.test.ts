@@ -18,10 +18,10 @@ describe('planilha', () => {
     const r = parseSheetRows(rows, 't.xlsx');
     expect(r.headerRow).toBe(1);
     expect(r.stops.length).toBe(2);
-    const a = r.stops[0];
+    const a = r.stops.find((s) => s.original.street.includes('Exemplo A'))!;
     expect(a.packages.length).toBe(4);
     expect(a.packages.map((p) => p.label)).toEqual(['#103', '#104', '#105', '+1']);
-    const b = r.stops[1];
+    const b = r.stops.find((s) => s.original.street.includes('Exemplo B'))!;
     expect(b.packages.length).toBe(2);
     expect(b.complement).toContain('Apto 304');
     expect(b.notes).toBe('Portão azul');
