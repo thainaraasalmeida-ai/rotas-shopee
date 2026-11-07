@@ -9,7 +9,7 @@ export function GroupBadge({ group, big, names }: { group?: Group; big?: boolean
   return (
     <span className={`badge ${big ? 'badge-big' : ''}`} style={{ background: c.bg, color: c.fg }}>
       GRUPO {group.index} — {c.name.toUpperCase()}
-      {names?.[group.index] ? <small> · {names[group.index]}</small> : null}
+      {group.special ? <small> · PONTO DE COLETA</small> : names?.[group.index] ? <small> · {names[group.index]}</small> : null}
     </span>
   );
 }

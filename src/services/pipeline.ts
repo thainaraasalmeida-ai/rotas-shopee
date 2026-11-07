@@ -111,7 +111,7 @@ export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: 
     matrix = { ...matrix, durations: matrix.durations.slice(0, si).map((r) => r.slice(0, si)) };
   }
   onProgress({ step: 'Otimizando a sequência de todas as paradas', done: 0, total: 1 });
-  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart });
+  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, exclude: Object.keys(session.specials ?? {}) });
   setPlan(plan);
   onProgress({ step: 'Concluído', done: 1, total: 1 });
   return { plan, warning };

@@ -104,8 +104,11 @@ export function RouteScreen() {
 
       <details className="box">
         <summary>Ajustes da otimização</summary>
-        <div className="maprow"><span>Número de grupos</span>
+        <div className="maprow"><span>Grupos comuns (fora os pontos de coleta)</span>
           <input type="number" min={1} max={12} value={settings.groupCount} onChange={(e) => setSettings({ groupCount: Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1)) })} />
+        </div>
+        <div className="maprow"><span>Ponto de coleta a partir de (pacotes no mesmo endereço)</span>
+          <input type="number" min={2} max={200} value={settings.collectionThreshold} onChange={(e) => { setSettings({ collectionThreshold: Math.max(2, parseInt(e.target.value, 10) || 10) }); useStore.getState().applyAutoSpecials(); }} />
         </div>
         <div className="maprow"><span>Avenida divisora</span>
           <input value={settings.dividerName} onChange={(e) => setSettings({ dividerName: e.target.value })} />
@@ -115,7 +118,7 @@ export function RouteScreen() {
         <div className="maprow"><span>Servidor OSRM</span>
           <input value={settings.osrmUrl} onChange={(e) => setSettings({ osrmUrl: e.target.value })} />
         </div>
-        <button className="btn" onClick={() => setPlan(importedPlan(Object.values(s.stops).sort((a, b) => s.importedOrder.indexOf(a.id) - s.importedOrder.indexOf(b.id)), s.source === 'pdf' ? rebuildImportedGroups(s) : [], settings.groupCount))}>
+        <button className="btn" onClick={() => setPlan(importedPlan(Object.values(s.stops).sort((a, b) => s.importedOrder.indexOf(a.id) - s.importedOrder.indexOf(b.id)), s.source === 'pdf' ? rebuildImportedGroups(s) : [], settings.groupCount, Object.keys(s.specials ?? {})))}>
           Voltar para a ordem do arquivo
         </button>
       </details>

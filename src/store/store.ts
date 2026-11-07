@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { addressKey, effectiveAddress } from '../domain/address';
 import type { Address, AuditEntry, GeoPoint, ImportIssue, ImportResult, PackageStatus, PropertyType, RoutePlan, Stop } from '../domain/types';
 import { importedPlan } from '../optimize/plan';
+import { detectCollectionPoints, regroup, type SpecialKind } from '../optimize/special';
 import { safeStorage } from './persistence';
 
 export interface Session {
@@ -20,6 +21,12 @@ export interface Session {
   cursor?: string;
   skipped: string[];
   audit: AuditEntry[];
+  /** Pontos de coleta desta rota (stopId → automático/manual). Sobrevivem a recálculos. */
+  specials?: Record<string, SpecialKind>;
+  /** Endereços que o usuário disse que NÃO são ponto de coleta nesta rota. */
+  specialDeclined?: string[];
+  /** Sugestões aprendidas que o usuário dispensou nesta rota. */
+  suggestionsDismissed?: string[];
 }
 
 export interface Settings {
@@ -28,6 +35,8 @@ export interface Settings {
   dividerEnabled: boolean;
   osrmUrl: string;
   useGpsStart: boolean;
+  /** A partir de quantos pacotes no mesmo endereço vira ponto de coleta. */
+  collectionThreshold: number;
 }
 
 interface State {
@@ -37,6 +46,8 @@ interface State {
   verifiedGeo: Record<string, GeoPoint>;
   /** Cache do geocodificador (por endereço). */
   geoCache: Record<string, GeoPoint | null>;
+  /** Pontos de coleta que o usuário marcou à mão em rotas anteriores (por endereço). */
+  learnedCollectionPoints: Record<string, { label: string; at: number }>;
 
   loadImport(r: ImportResult): void;
   clearSession(): void;
@@ -51,15 +62,21 @@ interface State {
   addAudit(e: AuditEntry): void;
   setSettings(p: Partial<Settings>): void;
   cacheGeo(key: string, g: GeoPoint | null): void;
+  setSpecial(stopId: string, on: boolean): void;
+  applyAutoSpecials(): void;
+  dismissSuggestion(stopId: string): void;
+  toggleSeparated(stopId: string, packageId: string): void;
+  setAllSeparated(stopId: string, value: boolean): void;
 }
 
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
       session: null,
-      settings: { groupCount: 8, dividerName: 'Avenida Fernando de Noronha', dividerEnabled: true, osrmUrl: 'https://router.project-osrm.org', useGpsStart: false },
+      settings: { groupCount: 8, dividerName: 'Avenida Fernando de Noronha', dividerEnabled: true, osrmUrl: 'https://router.project-osrm.org', useGpsStart: false, collectionThreshold: 10 },
       verifiedGeo: {},
       geoCache: {},
+      learnedCollectionPoints: {},
 
       loadImport(r) {
         const verified = get().verifiedGeo;
@@ -69,6 +86,8 @@ export const useStore = create<State>()(
           stops[s.id] = v ? { ...s, geo: v } : s;
         }
         const groupCount = r.groups.length || get().settings.groupCount;
+        const specials: Record<string, SpecialKind> = {};
+        for (const id of detectCollectionPoints(r.stops, get().settings.collectionThreshold)) specials[id] = 'auto';
         const session: Session = {
           id: `sess-${Date.now()}`,
           createdAt: Date.now(),
@@ -80,10 +99,14 @@ export const useStore = create<State>()(
           stops,
           importedOrder: r.stops.map((s) => s.id),
           importedGroupNames: Object.fromEntries(r.groups.filter((g) => g.name).map((g) => [g.index, g.name!])),
-          plan: importedPlan(r.stops, r.groups, groupCount),
+          plan: importedPlan(r.stops, r.groups, groupCount, Object.keys(specials)),
           skipped: [],
           audit: [],
+          specials,
+          specialDeclined: [],
+          suggestionsDismissed: [],
         };
+        session.plan = { ...session.plan, groups: regroup(session.plan.order, session.plan.groups, specials) };
         set({ session, settings: { ...get().settings, groupCount } });
       },
       clearSession() {
@@ -92,7 +115,54 @@ export const useStore = create<State>()(
       setPlan(plan) {
         const s = get().session;
         if (!s) return;
-        set({ session: { ...s, plan, cursor: undefined, skipped: [] } });
+        // Grupos especiais são preservados em qualquer recálculo.
+        const groups = regroup(plan.order, plan.groups, s.specials ?? {});
+        set({ session: { ...s, plan: { ...plan, groups }, cursor: undefined, skipped: [] } });
+      },
+      setSpecial(stopId, on) {
+        const s = get().session;
+        if (!s) return;
+        const specials = { ...(s.specials ?? {}) };
+        let declined = s.specialDeclined ?? [];
+        const learned = { ...get().learnedCollectionPoints };
+        const key = addressKey(effectiveAddress(s.stops[stopId]));
+        if (on) {
+          specials[stopId] = 'manual';
+          declined = declined.filter((x) => x !== stopId);
+          const a = effectiveAddress(s.stops[stopId]);
+          learned[key] = { label: `${a.street}, ${a.number}`, at: Date.now() }; // aprende para sugerir nas próximas rotas
+        } else {
+          delete specials[stopId];
+          if (!declined.includes(stopId)) declined = [...declined, stopId];
+          delete learned[key];
+        }
+        const groups = regroup(s.plan.order, s.plan.groups, specials);
+        set({ learnedCollectionPoints: learned, session: { ...s, specials, specialDeclined: declined, plan: { ...s.plan, groups } } });
+      },
+      applyAutoSpecials() {
+        const s = get().session;
+        if (!s) return;
+        const specials: Record<string, SpecialKind> = {};
+        for (const [id, k] of Object.entries(s.specials ?? {})) if (k === 'manual') specials[id] = k;
+        for (const id of detectCollectionPoints(Object.values(s.stops), get().settings.collectionThreshold, s.specialDeclined ?? [])) if (!specials[id]) specials[id] = 'auto';
+        const groups = regroup(s.plan.order, s.plan.groups, specials);
+        set({ session: { ...s, specials, specialDeclined: s.specialDeclined ?? [], suggestionsDismissed: s.suggestionsDismissed ?? [], plan: { ...s.plan, groups } } });
+      },
+      dismissSuggestion(stopId) {
+        const s = get().session;
+        if (!s) return;
+        set({ session: { ...s, suggestionsDismissed: [...(s.suggestionsDismissed ?? []), stopId] } });
+      },
+      toggleSeparated(stopId, packageId) {
+        const s = get().session;
+        if (!s) return;
+        const st = s.stops[stopId];
+        get().updateStop(stopId, { packages: st.packages.map((p) => (p.id === packageId ? { ...p, separated: !p.separated } : p)) });
+      },
+      setAllSeparated(stopId, value) {
+        const s = get().session;
+        if (!s) return;
+        get().updateStop(stopId, { packages: s.stops[stopId].packages.map((p) => ({ ...p, separated: value })) });
       },
       updateStop(id, patch) {
         const s = get().session;
@@ -161,7 +231,20 @@ export const useStore = create<State>()(
         set({ geoCache: { ...get().geoCache, [key]: g } });
       },
     }),
-    { name: 'rotas-shopee-v1', storage: createJSONStorage(() => safeStorage), version: 1 },
+    {
+      name: 'rotas-shopee-v1',
+      storage: createJSONStorage(() => safeStorage),
+      version: 2,
+      // v1 → v2: mantém rota e progresso; os pontos de coleta são calculados ao abrir (applyAutoSpecials).
+      migrate: (persisted, version) => {
+        const st = (persisted ?? {}) as Partial<State>;
+        if (version < 2) {
+          st.settings = { ...(st.settings as Settings), collectionThreshold: 10 };
+          st.learnedCollectionPoints = st.learnedCollectionPoints ?? {};
+        }
+        return st as State;
+      },
+    },
   ),
 );
 
@@ -189,4 +272,11 @@ export function nextStopId(s: Session, afterId?: string): string | undefined {
 export function currentStopId(s: Session): string | undefined {
   if (s.cursor && s.stops[s.cursor] && isPending(s.stops[s.cursor])) return s.cursor;
   return nextStopId(s, undefined);
+}
+
+/** Sugestões aprendidas: endereços desta rota marcados como ponto de coleta em rotas anteriores (precisam de confirmação). */
+export function collectionSuggestions(s: Session, learned: Record<string, { label: string; at: number }>): string[] {
+  return Object.values(s.stops)
+    .filter((st) => learned[addressKey(effectiveAddress(st))] && !(s.specials ?? {})[st.id] && !(s.suggestionsDismissed ?? []).includes(st.id))
+    .map((st) => st.id);
 }

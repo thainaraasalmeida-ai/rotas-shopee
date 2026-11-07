@@ -16,6 +16,8 @@ export interface Package {
   /** Complemento específico deste pacote (planilha). */
   complement?: string;
   status: PackageStatus;
+  /** Conferência física na separação (não tem relação com entrega). */
+  separated?: boolean;
   failReason?: string;
   updatedAt?: number;
 }
@@ -73,6 +75,8 @@ export interface Group {
   colorKey: string;
   name?: string; // ex.: "Norte" (do PDF)
   stopIds: string[];
+  /** Grupo exclusivo de um ponto de coleta (um único endereço). */
+  special?: 'auto' | 'manual';
 }
 
 export type RouteMethod = 'importado' | 'linha-reta' | 'malha-viaria';

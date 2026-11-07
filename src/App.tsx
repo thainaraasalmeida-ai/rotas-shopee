@@ -26,6 +26,12 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(() => readHash() ?? (session ? 'entregar' : 'importar'));
   const [storageOk] = useState(storageAvailable);
 
+  // Rotas salvas antes da versão com pontos de coleta: calcula os grupos especiais sem mexer no progresso.
+  useEffect(() => {
+    const s = useStore.getState().session;
+    if (s && s.specials === undefined) useStore.getState().applyAutoSpecials();
+  }, []);
+
   useEffect(() => {
     const h = () => { const t = readHash(); if (t) setTab(t); };
     window.addEventListener('hashchange', h);

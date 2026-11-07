@@ -118,3 +118,8 @@ input[type=checkbox] { width: 24px; min-height: 24px; }
 .mk { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); text-shadow: 0 0 2px #000; }
 .mk-approx { border: 2px dashed #000; }
 .chips-flow .chips { display: contents; }
+.group.special { border-width: 3px; border-style: dashed; }
+.sep-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.sep { min-height: 44px; min-width: 64px; border: 2px solid var(--ink); background: #fff; border-radius: 10px; font-weight: 800; font-size: 16px; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+.sep.extra { border-style: dashed; background: #fff8e1; }
+.sep.on { background: var(--ok); color: #fff; border-color: var(--ok); }

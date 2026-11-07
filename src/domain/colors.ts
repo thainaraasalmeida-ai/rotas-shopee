@@ -28,3 +28,6 @@ export function groupColorKey(index: number): string {
 export function colorOf(key: string): GroupColor {
   return GROUP_COLORS.find((c) => c.key === key) ?? GROUP_COLORS[0];
 }
+
+/** Cores reservadas para grupos especiais (pontos de coleta), fora das cores dos grupos comuns. */
+export const SPECIAL_COLOR_KEYS = ['preto', 'ciano', 'lima', 'cinza'];

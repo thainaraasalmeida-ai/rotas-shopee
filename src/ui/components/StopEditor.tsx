@@ -26,7 +26,8 @@ export function StopEditor({ stopId, onClose }: { stopId: string; onClose: () =>
 }
 
 function Editor({ stop, onClose }: { stop: Stop; onClose: () => void }) {
-  const { correctAddress, confirmPropertyType, setGeo } = useStore();
+  const { correctAddress, confirmPropertyType, setGeo, setSpecial } = useStore();
+  const special = useStore((s) => !!s.session?.specials?.[stop.id]);
   const cur = effectiveAddress(stop);
   const [street, setStreet] = useState(cur.street);
   const [number, setNumber] = useState(cur.number);
@@ -76,6 +77,15 @@ function Editor({ stop, onClose }: { stop: Stop; onClose: () => void }) {
         <div className="row">
           <button className="btn primary" onClick={saveCorrection}>Salvar correção</button>
           {stop.corrected ? <button className="btn" onClick={() => { correctAddress(stop.id, undefined); setStreet(stop.original.street); setNumber(stop.original.number); setMsg('Voltou ao endereço original.'); }}>Usar original</button> : null}
+        </div>
+
+        <div className="lbl">Ponto de coleta</div>
+        <div className="row wrap">
+          {special ? (
+            <button className="btn" onClick={() => setSpecial(stop.id, false)}>Não é ponto de coleta</button>
+          ) : (
+            <button className="btn" onClick={() => setSpecial(stop.id, true)}>Marcar como ponto de coleta (grupo exclusivo)</button>
+          )}
         </div>
 
         <div className="lbl">Tipo de imóvel {stop.propertyTypeSource === 'confirmado' ? '(confirmado)' : stop.propertyTypeSource === 'inferido' ? '(inferido do texto — confirme)' : ''}</div>

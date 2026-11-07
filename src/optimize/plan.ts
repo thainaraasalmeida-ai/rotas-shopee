@@ -11,13 +11,17 @@ export interface PlanOptions {
   importedOrder?: string[];
   /** Tempo do ponto de partida até cada parada localizada (mesma ordem de `located`). */
   fromStart?: number[];
+  /** Pontos de coleta: entram na sequência, mas não no corte dos grupos comuns. */
+  exclude?: string[];
 }
 
 /** Plano "como importado": mantém grupos e ordem do arquivo. Não é apresentado como otimizado. */
-export function importedPlan(stops: Stop[], groups: Group[], groupCount: number): RoutePlan {
+export function importedPlan(stops: Stop[], groups: Group[], groupCount: number, exclude: string[] = []): RoutePlan {
   const order = stops.map((s) => s.id);
   let gs = groups;
   if (!gs.length) {
+    const all = stops;
+    stops = all.filter((s) => !exclude.includes(s.id)); // pontos de coleta não entram no corte dos grupos comuns
     // Sem grupos no arquivo: corta a ordem do arquivo equilibrando PACOTES (não paradas) e sem partir uma rua.
     const parts = splitIntoGroups({
       packages: stops.map((s) => s.packages.length),
@@ -26,7 +30,7 @@ export function importedPlan(stops: Stop[], groups: Group[], groupCount: number)
       crossing: stops.slice(1).map(() => false),
       k: groupCount,
     });
-    gs = parts.map((p, i) => ({ index: i + 1, colorKey: groupColorKey(i + 1), stopIds: p.map((j) => order[j]) }));
+    gs = parts.map((p, i) => ({ index: i + 1, colorKey: groupColorKey(i + 1), stopIds: p.map((j) => stops[j].id) }));
   }
   return {
     method: 'importado',
@@ -67,7 +71,7 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
   const order = [...orderedLocated.map((s) => s.id), ...unlocated.map((s) => s.id)];
 
   // Cortes em grupos sobre a ordem global
-  const posStops = [...orderedLocated, ...unlocated];
+  const posStops = [...orderedLocated, ...unlocated].filter((s) => !(opts.exclude ?? []).includes(s.id));
   const edgeSeconds: number[] = [];
   const sameStreet: boolean[] = [];
   const crossing: boolean[] = [];
