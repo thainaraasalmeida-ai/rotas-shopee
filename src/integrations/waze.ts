@@ -19,12 +19,12 @@ export function wazeLink(stop: Stop): WazeLink {
     return {
       url: `https://waze.com/ul?ll=${g.lat.toFixed(6)},${g.lng.toFixed(6)}&navigate=yes`,
       mode: g.verified ? 'coordenada-verificada' : 'coordenada',
-      hint: g.verified ? 'Coordenada conferida' : 'Coordenada do mapa (não conferida)',
+      hint: 'Waze por coordenada',
     };
   }
   return {
     url: `https://waze.com/ul?q=${encodeURIComponent(formatAddress(effectiveAddress(stop)))}&navigate=yes`,
     mode: 'endereco',
-    hint: 'Por endereço (o Waze localiza)',
+    hint: 'Waze pelo endereço',
   };
 }

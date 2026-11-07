@@ -32,7 +32,7 @@ function orient(lines: LatLng[][]): LatLng[][] {
   });
 }
 
-/** Lado do ponto em relação à avenida: +1 ou -1 (pelo trecho mais próximo). */
+/** Lado do ponto em relação à avenida: +1 ou -1 (pelo trecho mais próximo); 0 = na própria avenida (< 35 m). */
 export function sideOf(p: LatLng, d: DividerGeometry): number {
   let best = Infinity;
   let side = 0;
@@ -52,5 +52,7 @@ export function sideOf(p: LatLng, d: DividerGeometry): number {
       }
     }
   }
-  return side;
+  // distância aproximada em metros (graus → m na latitude local)
+  const meters = Math.sqrt(best) * 111320;
+  return meters < 35 ? 0 : side;
 }

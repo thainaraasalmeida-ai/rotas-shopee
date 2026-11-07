@@ -3,3 +3,4 @@ dist
 *.pdf
 fixtures/
 tests/pdf.test.ts
+tests/local/

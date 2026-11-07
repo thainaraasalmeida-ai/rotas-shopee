@@ -5,7 +5,7 @@ import { validateImport } from './validate';
 
 export type Field =
   | 'label' | 'tracking' | 'address' | 'number' | 'complement' | 'district'
-  | 'city' | 'zip' | 'notes' | 'lat' | 'lng' | 'qty';
+  | 'city' | 'zip' | 'notes' | 'lat' | 'lng' | 'qty' | 'stop';
 
 export const FIELD_LABEL: Record<Field, string> = {
   label: 'Nº do pacote / sequência',
@@ -20,12 +20,13 @@ export const FIELD_LABEL: Record<Field, string> = {
   lat: 'Latitude',
   lng: 'Longitude',
   qty: 'Quantidade',
+  stop: 'Parada (Shopee)',
 };
 
 // Sinônimos usados nas exportações da Shopee/SPX (pt/en) e planilhas comuns.
 const SYNONYMS: Record<Field, string[]> = {
-  label: ['sequence', 'sequencia', 'seq', 'ordem', 'n pacote', 'numero do pacote', 'etiqueta', 'parada', 'stop', 'pacote', 'package no', 'spx seq'],
-  tracking: ['tracking', 'tracking number', 'spx tn', 'tn', 'codigo de rastreio', 'rastreio', 'at id', 'order id', 'pedido', 'awb', 'id do pacote', 'shipment id'],
+  label: ['sequence', 'sequencia', 'seq', 'ordem', 'n pacote', 'numero do pacote', 'etiqueta', 'pacote', 'package no', 'spx seq'],
+  tracking: ['spx tn', 'tracking number', 'tracking', 'tn', 'codigo de rastreio', 'rastreio', 'order id', 'pedido', 'awb', 'id do pacote', 'shipment id'],
   address: ['destination address', 'endereco', 'address', 'logradouro', 'rua', 'endereco de entrega', 'endereco completo', 'delivery address'],
   number: ['numero', 'number', 'nro', 'n'],
   complement: ['complemento', 'complement', 'address line 2', 'apto'],
@@ -36,6 +37,7 @@ const SYNONYMS: Record<Field, string[]> = {
   lat: ['latitude', 'lat'],
   lng: ['longitude', 'lng', 'lon', 'long'],
   qty: ['quantidade', 'qtd', 'qty', 'quantity', 'volumes'],
+  stop: ['stop', 'parada', 'stop no', 'n parada'],
 };
 
 const norm = (s: unknown) => stripAccents(String(s ?? '')).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -51,11 +53,11 @@ export function detectHeader(rows: unknown[][]): { headerRow: number; mapping: M
     for (const pass of ['exact', 'contains'] as const) {
       (Object.keys(SYNONYMS) as Field[]).forEach((f) => {
         if (mapping[f] !== undefined) return;
-        const idx = cells.findIndex(
-          (c, i) => c && !Object.values(mapping).includes(i) &&
-            SYNONYMS[f].some((syn) => (pass === 'exact' ? c === syn : syn.length > 3 && c.includes(syn))),
-        );
-        if (idx >= 0) mapping[f] = idx;
+        // percorre os sinônimos em ordem de prioridade (ex.: "SPX TN" antes de outros códigos)
+        for (const syn of SYNONYMS[f]) {
+          const idx = cells.findIndex((c, i) => c && !Object.values(mapping).includes(i) && (pass === 'exact' ? c === syn : syn.length > 3 && c.includes(syn)));
+          if (idx >= 0) { mapping[f] = idx; break; }
+        }
       });
     }
     const score = Object.keys(mapping).length + (mapping.address !== undefined ? 3 : 0);
@@ -71,13 +73,13 @@ function cell(row: unknown[], idx: number | undefined): string {
 }
 
 /** Remove bairro/cidade/UF/CEP do fim de um endereço completo e devolve o restante como complemento. */
-function parseFullAddress(full: string): { street: string; number: string; complement: string; zip?: string } {
+function parseFullAddress(full: string, extraDrop: string[] = []): { street: string; number: string; complement: string; zip?: string } {
   const zip = full.match(/\b\d{5}-?\d{3}\b/)?.[0];
   const parts = full.replace(/\b\d{5}-?\d{3}\b/, '').split(/\s*[,;]\s*|\s+-\s+/).map((p) => p.trim()).filter(Boolean);
   const { street, number } = splitStreetNumber(parts.slice(0, 2).join(', '));
   const rest = parts.slice(number ? 2 : 1).filter((p) => {
     const n = norm(p);
-    return n && !['bom retiro', 'ipatinga', 'mg', 'minas gerais', 'brasil', 'brazil'].includes(n);
+    return n && !['bom retiro', 'ipatinga', 'mg', 'minas gerais', 'brasil', 'brazil', ...extraDrop.map(norm)].includes(n);
   });
   return { street, number, complement: rest.join(', '), zip };
 }
@@ -104,7 +106,7 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
       street = addrCell.replace(/,\s*$/, '');
       number = cell(row, mapping.number);
     } else {
-      const p = parseFullAddress(addrCell);
+      const p = parseFullAddress(addrCell, [cell(row, mapping.district), cell(row, mapping.city)].filter(Boolean));
       street = p.street; number = p.number; compFromAddr = p.complement; zip = zip ?? p.zip;
     }
     const complement = [cell(row, mapping.complement), compFromAddr].filter(Boolean).join(' · ');
@@ -154,6 +156,20 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
     if (!stop.geo && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.1) {
       stop.geo = { lat, lng, precision: 'shopee', verified: false, source: 'Planilha Shopee' };
     }
+  }
+  // Coordenada idêntica para endereços diferentes = ponto aproximado da Shopee (não aponta o imóvel).
+  const byCoord = new Map<string, Stop[]>();
+  for (const s of stops) if (s.geo) {
+    const k = `${s.geo.lat.toFixed(6)},${s.geo.lng.toFixed(6)}`;
+    byCoord.set(k, [...(byCoord.get(k) ?? []), s]);
+  }
+  let shared = 0;
+  for (const list of byCoord.values()) if (list.length > 1) for (const s of list) { s.geo!.precision = 'aproximado'; shared++; }
+  if (shared) issues.push({ level: 'info', message: `${shared} endereço(s) diferentes receberam a mesma coordenada da Shopee — tratados como aproximados (o Waze abre pelo endereço). Fixe pelo GPS na porta para corrigir.` });
+  if (mapping.stop !== undefined) {
+    const shopeeStops = new Set(rows.slice(headerRow + 1).map((r) => cell(r, mapping.stop)).filter(Boolean)).size;
+    if (shopeeStops && shopeeStops !== stops.length)
+      issues.push({ level: 'info', message: `A Shopee agrupou em ${shopeeStops} paradas; o app separou por endereço (rua + número): ${stops.length} paradas.` });
   }
   for (const s of stops) {
     s.propertyType = inferPropertyType(`${s.complement} ${s.notes}`);

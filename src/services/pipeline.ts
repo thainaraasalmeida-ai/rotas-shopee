@@ -1,4 +1,4 @@
-import { addressKey, effectiveAddress } from '../domain/address';
+import { addressKey, effectiveAddress, normalizeStreet } from '../domain/address';
 import type { GeoPoint, RoutePlan, Stop } from '../domain/types';
 import { optimizedPlan, type PlanOptions } from '../optimize/plan';
 import { orderedStops, useStore } from '../store/store';
@@ -53,7 +53,10 @@ export async function computeDividerSides(signal?: AbortSignal): Promise<string>
   const lats = located.map((s) => s.geo!.lat), lngs = located.map((s) => s.geo!.lng);
   const div = await fetchDivider(settings.dividerName, { s: Math.min(...lats), n: Math.max(...lats), w: Math.min(...lngs), e: Math.max(...lngs) }, signal);
   if (!div) return `Não encontrei "${settings.dividerName}" no mapa desta região.`;
-  for (const s of located) updateStop(s.id, { dividerSide: sideOf(s.geo!, div) });
+  for (const s of located) {
+    const onAvenue = normalizeStreet(effectiveAddress(s).street) === normalizeStreet(settings.dividerName);
+    updateStop(s.id, { dividerSide: onAvenue ? undefined : sideOf(s.geo!, div) || undefined });
+  }
   dividerCache = div;
   return `Avenida divisora: ${settings.dividerName} (${div.lines.length} trecho(s) no mapa).`;
 }

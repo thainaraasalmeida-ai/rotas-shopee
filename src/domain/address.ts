@@ -46,13 +46,22 @@ export function splitStreetNumber(line: string): { street: string; number: strin
   return { street: clean, number: '' };
 }
 
-/** Tipo de imóvel inferido de complemento/observação. Fica como "inferido" até o entregador confirmar. */
+/** Tipo de imóvel inferido de complemento/observação. Fica como "inferido" até o entregador confirmar.
+ * Vale a palavra que aparece primeiro (ex.: "Casa ao lado de um prédio" = casa). */
 export function inferPropertyType(text: string): PropertyType {
   const t = ` ${stripAccents(text).toLowerCase()} `;
-  if (/\b(loja|academia|lava ?jato|escola|galpao|brecho|mercado|padaria|farmacia|oficina|empresa|ltda|comercio|restaurante|bar|salao|clinica|igreja|lar |escritorio|mprint|ortopedia|casa de racao)\b/.test(t)) return 'comercio';
-  if (/\b(ap|apt|apto|apartamento|predio|edificio|bloco|bl|torre|cobertura)\b/.test(t) || /\bap\s?\d/.test(t)) return 'predio';
-  if (/\bcasa\b/.test(t)) return 'casa';
-  return 'desconhecido';
+  const rules: [PropertyType, RegExp][] = [
+    ['comercio', /\b(loja|academia|lava ?jato|escola|galpao|brecho|mercado|padaria|farmacia|oficina|empresa|ltda|comercio|restaurante|bar|salao|clinica|igreja|lar|escritorio|mprint|ortopedia|chaveiro|legumes|sacolao|consultorio)\b/],
+    ['predio', /\b(ap|apt|apto|apart|aparts|apartamento|predio|edificio|bloco|bl|torre|cobertura)\b|\bap\s?\d/],
+    ['casa', /\b(casa|cs)\b/],
+  ];
+  let best: PropertyType = 'desconhecido';
+  let pos = Infinity;
+  for (const [type, re] of rules) {
+    const m = re.exec(t);
+    if (m && m.index < pos) { pos = m.index; best = type; }
+  }
+  return best;
 }
 
 export const PROPERTY_LABEL: Record<PropertyType, string> = {
