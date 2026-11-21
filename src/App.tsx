@@ -61,7 +61,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <b className="wordmark"><span className="brand-icon"><Icon name="nav" size={20}/></span>Sho<span>Sho</span></b>
-        <span className="city"><Icon name="pin" size={15}/>Ipatinga · MG</span>
+        <span className="city"><Icon name="pin" size={15}/>Ipatinga · v{__BUILD__}</span>
       </header>
       {!storageOk ? <div className="ss-save-err" role="alert">⚠ O iPhone não conseguiu salvar a última ação. Não feche a ShoSho: vá em Resumo e salve uma cópia de segurança agora.</div> : null}
       <main>

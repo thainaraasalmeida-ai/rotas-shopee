@@ -277,7 +277,7 @@ export function DeliveryScreen() {
               <div className="row wrap">
                 {a.stopIds.slice(0, 4).map((id) => (
                   <button key={id} className="btn small" onClick={() => { store.setCursor(id); store.markSkipped(id, false); setAlerts(null); }}>
-                    Ir para {useStore.getState().session!.stops[id].packages.filter((p) => p.status === 'pending').map((p) => shortLabel(p)).join(' ')}
+                    Ir para {useStore.getState().session!.stops[id].packages.filter((p) => p.status === 'pending').map((p) => shortLabel(p)).join(' ')}{(() => { const b = physicalBag(useStore.getState().session!, id); return b ? ` · Sacola ${b.index} ${colorOf(b.colorKey).name}` : ''; })()}
                   </button>
                 ))}
               </div>

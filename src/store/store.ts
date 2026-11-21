@@ -36,7 +36,7 @@ export interface Session {
   /** Separação: em qual sacola cada pacote foi guardado (pela leitura da etiqueta). Não muda a sequência nem a entrega. */
   sorted?: Record<string, { bag: number; colorKey: string; at: number }>;
   /** Jornada: organização do carro e saída para entregar (meta de 4 horas). */
-  shift?: { sortStartedAt?: number; loadedAt?: number; departedAt?: number };
+  shift?: { sortStartedAt?: number; loadedAt?: number; departedAt?: number; lastDeliveryAt?: number; returnedAt?: number };
   audit: AuditEntry[];
   /** Pontos de coleta desta rota (stopId → automático/manual). Sobrevivem a recálculos. */
   specials?: Record<string, SpecialKind>;
@@ -87,6 +87,7 @@ interface State {
   recordSort(packageId: string, bag: number, colorKey: string): void;
   leaveForDistrictExit(stopId: string): string | undefined;
   depart(): void;
+  arriveHome(): void;
   saveLoadPoint(p: LoadPoint | undefined): void;
   endDetour(): void;
   pinLast(stopId: string, pinned: boolean): void;
@@ -295,6 +296,12 @@ export const useStore = create<State>()(
         if (!s || s.sorted?.[packageId]) return;
         const now = Date.now();
         set({ session: { ...s, sorted: { ...s.sorted, [packageId]: { bag, colorKey, at: now } }, shift: { ...s.shift, sortStartedAt: s.shift?.sortStartedAt ?? now } } });
+      },
+      arriveHome() {
+        const s = get().session;
+        if (!s || s.shift?.returnedAt) return;
+        const last = Math.max(0, ...s.audit.filter(a => a.kind === 'pacote').map(a => a.at));
+        set({ session: { ...s, shift: { ...s.shift, lastDeliveryAt: last || undefined, returnedAt: Date.now() } } });
       },
       depart() {
         const s = get().session;

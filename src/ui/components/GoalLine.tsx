@@ -40,7 +40,7 @@ export function GoalLine() {
   const f = forecast(s, now);
   const org = loadingMinutes(s);
   if (!f) return <div className="ss-goal"><span>A meta de 4 horas começa quando você sair.{org ? ` Organização do carro: ${org} min.` : ''}</span><button className="ss-linkbtn" onClick={() => useStore.getState().depart()}>Saí para entregar</button></div>;
-  if (!f.remainingStops) return <div className="ss-goal"><b>Rota concluída</b><span>{mins(now - f.departedAt)} desde a saída{org ? ` · organização ${org} min` : ''}</span></div>;
+  if (!f.remainingStops) return <div className="ss-goal"><b>Rota concluída</b><span>{mins(now - f.departedAt)} desde a saída{org ? ` · organização ${org} min` : ''}</span>{s.shift?.returnedAt ? <span>Chegou em casa às {hhmm(s.shift.returnedAt)}</span> : <button className="ss-linkbtn" onClick={() => useStore.getState().arriveHome()}>Cheguei em casa</button>}</div>;
   return (
     <div className={'ss-goal' + (f.late ? ' late' : '')} role={f.late ? 'alert' : undefined}>
       <b>Meta: última entrega até {hhmm(f.target)}</b>
@@ -48,4 +48,18 @@ export function GoalLine() {
       <span className="small">{mins(f.remainingDrive * 1000)} de carro + {f.remainingStops} parada{f.remainingStops > 1 ? 's' : ''} × {(f.service / 60).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} min{f.observed ? ' (seu ritmo)' : ' (estimado)'}</span>
     </div>
   );
+}
+
+/** Tempos da jornada para o resumo. */
+export function shiftTimes(s: Session) {
+  const sh = s.shift ?? {};
+  const lastDelivery = sh.lastDeliveryAt ?? (Math.max(0, ...s.audit.filter(a => a.kind === 'pacote').map(a => a.at)) || undefined);
+  return {
+    organizacao: sh.sortStartedAt && sh.loadedAt ? mins(sh.loadedAt - sh.sortStartedAt) : undefined,
+    saida: sh.departedAt ? hhmm(sh.departedAt) : undefined,
+    meta: sh.departedAt ? hhmm(sh.departedAt + GOAL_MS) : undefined,
+    entregas: sh.departedAt && lastDelivery && lastDelivery > sh.departedAt ? mins(lastDelivery - sh.departedAt) : undefined,
+    ultima: lastDelivery ? hhmm(lastDelivery) : undefined,
+    retorno: sh.returnedAt && lastDelivery ? mins(sh.returnedAt - lastDelivery) : undefined,
+  };
 }

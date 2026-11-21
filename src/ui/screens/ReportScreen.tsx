@@ -1,4 +1,5 @@
 import { autoBackupText, backupText } from '../../store/persistence';
+import { shiftTimes } from '../components/GoalLine';
 import { useState } from 'react';
 import { effectiveAddress, formatAddress } from '../../domain/address';
 import { orderedStops, useStore } from '../../store/store';
@@ -47,6 +48,11 @@ export function ReportScreen() {
   return (
     <div className="screen">
       <h2>Resumo da rota</h2>
+      {(() => { const t = shiftTimes(session!); const closedNoDelivery = pk.filter(p => p.shopeeClosed && p.status !== 'delivered').length; return <div className="box small">
+        <div>Organização do carro: <b>{t.organizacao ?? '—'}</b> · Saída: <b>{t.saida ?? '—'}</b> · Meta: <b>{t.meta ?? '—'}</b></div>
+        <div>Período de entregas: <b>{t.entregas ?? '—'}</b>{t.ultima ? ` (última às ${t.ultima})` : ''} · Retorno para casa: <b>{t.retorno ?? '—'}</b></div>
+        <div>Baixa na Shopee sem entrega física: <b>{closedNoDelivery}</b></div>
+      </div>; })()}
       <div className="stats">
         <div><big>{delivered.length}</big>entregues fisicamente</div>
         <div><big>{closed.length}</big>com baixa informada</div>
@@ -89,6 +95,7 @@ export function ReportScreen() {
       <div className="row wrap">
         <button className="btn" onClick={copySummary}>Copiar resumo</button>
         <button className="btn" onClick={copy}>Copiar dados (JSON)</button>
+        <span className="muted small">Versão do app: {__BUILD__}</span>
       </div>
       <div className="box stack">
         <b>Cópia de segurança</b>

@@ -124,8 +124,11 @@ export function RouteScreen({ onBuilt }: { onBuilt?: () => void } = {}) {
       </div>}
 
       <div className="stack">
-        <button className="btn primary big" disabled={!!progress} onClick={() => run('geo')}>1. Localizar endereços {missing.length ? `(${missing.length})` : '✔'}</button>
-        <button className="btn primary big" disabled={!!progress || located.length < 2} onClick={() => (fixedOrder ? setGuard(true) : run('opt'))}>2. Otimizar pela malha viária</button>
+        {!s.start ? <div className="ss-warnline">Próximo passo: confirme acima de onde vai sair. Depois toque em “Calcular rota e montar sacolas”.</div> : null}
+        <details className="ss-more"><summary>Opções avançadas</summary>
+          <button className="btn" disabled={!!progress} onClick={() => run('geo')}>Localizar endereços no mapa {missing.length ? `(${missing.length} faltando)` : '✔'}</button>
+          <button className="btn" disabled={!!progress || located.length < 2} onClick={() => (fixedOrder ? setGuard(true) : run('opt'))}>Recalcular sem ponto de saída</button>
+        </details>
         {fixedOrder ? <div className="info small">Recalcular reorganiza as paradas pendentes e mantém os grupos de separação do PDF.</div> : null}
         {progress ? (
           <div className="info">

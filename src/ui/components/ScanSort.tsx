@@ -102,7 +102,7 @@ export function ScanSort() {
         return (
           <div className={'ss-scan-res ' + last.kind} style={{ ['--bc' as string]: c.bg }} role="status">
             {last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
-            <div className="ss-scan-big"><span>{last.pkg.extra ? `${last.pkg.label} …${last.pkg.tracking?.slice(-5) ?? ''}` : last.pkg.label}</span><span>→</span><span className="ss-sw" /><span>SACOLA {last.bag} · {c.name.toUpperCase()}</span></div>
+            {!canPrepareBags(session) ? <div className="ss-scan-big"><span>{last.pkg.label}</span><span>→ sacola definida após calcular a rota</span></div> : <div className="ss-scan-big"><span>{last.pkg.extra ? `${last.pkg.label} …${last.pkg.tracking?.slice(-5) ?? ''}` : last.pkg.label}</span><span>→</span><span className="ss-sw" /><span>SACOLA {last.bag} · {c.name.toUpperCase()}</span></div>}
             <div className="ss-scan-mid">{last.position}ª parada · {street(last.stop)}</div>
             {last.kind === 'repeat' ? <div>Este pacote já está na <b>Sacola {last.bag} {c.name}</b>.</div> : null}
             {stopPk.length > 1 ? <div className="ss-scan-vol">{stopPk.map(p => <span key={p.id} className={session.sorted?.[p.id] ? 'ok' : 'no'}>{session.sorted?.[p.id] ? '✓' : '○'} {p.extra ? `${p.label} …${p.tracking?.slice(-5) ?? ''}` : p.label}</span>)}<em>{stopPk.filter(p => !session.sorted?.[p.id]).length ? `Faltam ${stopPk.filter(p => !session.sorted?.[p.id]).length} desta porta` : 'Todos os volumes desta porta guardados'}</em></div> : null}
