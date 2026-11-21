@@ -38,7 +38,7 @@ export function lookupCode(s: Session, raw: string): ScanResult {
 }
 
 /** Leitura contínua: a câmera fica aberta; cada etiqueta lida registra só a separação. */
-export function ScanSort() {
+export function ScanSort({ onFound }: { onFound?: (stopId: string) => void } = {}) {
   const session = useStore(x => x.session)!;
   const [scanning, setScanning] = useState(false);
   const [last, setLast] = useState<ScanResult | null>(null);
@@ -55,6 +55,11 @@ export function ScanSort() {
     recent.current = { code, at: now };
     const s = useStore.getState().session!;
     const r = lookupCode(s, code);
+    if (onFound && (r.kind === 'ok' || r.kind === 'repeat')) {
+      setLast(r);
+      if (r.stop.packages.some(p => p.status === 'pending')) { onFound(r.stop.id); return; }
+      return; // já entregue: mostra o resultado e não navega
+    }
     if (r.kind === 'ok' && canPrepareBags(s)) useStore.getState().recordSort(r.pkg.id, r.bag, r.colorKey);
     setLast(r);
     try { navigator.vibrate?.(r.kind === 'ok' ? 60 : [80, 60, 80]); } catch { /* sem vibração */ }
@@ -95,9 +100,10 @@ export function ScanSort() {
 
   return (
     <div className="ss ss-scan">
+      {onFound ? <div className="small muted">Leia a etiqueta do pacote que está na sua mão: a ShoSho abre a entrega desse endereço. Depois volta para a sequência planejada.</div> : <>
       <div className="ss-topline"><span><b>{done}</b> de {all.length} separados</span><span>{all.length - done} faltam</span></div>
-      <div className="ss-prog" style={{ marginBottom: 8 }}><div style={{ width: `${(done / Math.max(1, all.length)) * 100}%` }} /></div>
-      {!canPrepareBags(session) ? <div className="ss-warnline">Rota ainda não calculada: a leitura só consulta, não guarda. Calcule a rota em Rota antes de separar.</div> : null}
+      <div className="ss-prog" style={{ marginBottom: 8 }}><div style={{ width: `${(done / Math.max(1, all.length)) * 100}%` }} /></div></>}
+      {!onFound && !canPrepareBags(session) ? <div className="ss-warnline">Rota ainda não calculada: a leitura só consulta, não guarda. Calcule a rota em Rota antes de separar.</div> : null}
       <button className="ss-btn go" onClick={() => setScanning(!scanning)}><Icon name="scan" />{scanning ? 'Fechar câmera' : 'Ler etiquetas com a câmera'}</button>
       {scanning ? <video ref={video} muted playsInline className="ss-scan-video" /> : null}
       {camMsg ? <div className="ss-near-warn">{camMsg}</div> : null}
@@ -112,6 +118,7 @@ export function ScanSort() {
           {last.options.map(o => { const c = colorOf(o.colorKey); return <button key={o.pkg.id} className="ss-btn ghost" style={{ textAlign: 'left' }} onClick={() => {
             const st = useStore.getState();
             st.setStickerAlias(last.code, o.pkg.id);
+            if (onFound) { if (o.stop.packages.some(p => p.status === 'pending')) onFound(o.stop.id); return; }
             if (canPrepareBags(st.session!) && !st.session!.sorted?.[o.pkg.id]) st.recordSort(o.pkg.id, o.bag, o.colorKey);
             setLast({ kind: st.session!.sorted?.[o.pkg.id] && o.bag ? 'ok' : 'ok', stop: o.stop, pkg: o.pkg, bag: o.bag, colorKey: o.colorKey, position: o.position, code: last.code });
           }}>…{o.pkg.tracking?.slice(-5)} · {street(o.stop)} · Sacola {o.bag} {c.name}{session.sorted?.[o.pkg.id] ? ' · já lido' : ''}</button>; })}
@@ -123,7 +130,7 @@ export function ScanSort() {
         const stopPk = last.stop.packages;
         return (
           <div className={'ss-scan-res ' + last.kind} style={{ ['--bc' as string]: c.bg }} role="status">
-            {last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
+            {onFound && !last.stop.packages.some(p => p.status === 'pending') ? <span className="ss-scan-tag">Este endereço já foi entregue</span> : !onFound && last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
             {!canPrepareBags(session) ? <div className="ss-scan-big"><span>{last.pkg.label}</span><span>→ sacola definida após calcular a rota</span></div> : <div className="ss-scan-big"><span>{last.pkg.extra ? `${last.pkg.label} …${last.pkg.tracking?.slice(-5) ?? ''}` : last.pkg.label}</span><span>→</span><span className="ss-sw" /><span>SACOLA {last.bag} · {c.name.toUpperCase()}</span></div>}
             <div className="ss-scan-mid">{last.position}ª parada · {street(last.stop)}</div>
             {last.kind === 'repeat' ? <div>Este pacote já está na <b>Sacola {last.bag} {c.name}</b>.</div> : null}

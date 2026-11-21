@@ -6,18 +6,20 @@ import { DeliveryScreen } from './ui/screens/DeliveryScreen';
 import { ImportScreen } from './ui/screens/ImportScreen';
 import { ReportScreen } from './ui/screens/ReportScreen';
 import { ErrorBoundary } from './ui/components/ErrorBoundary';
+import { ScanGoScreen } from './ui/screens/ScanGoScreen';
 import { NearbyScreen } from './ui/screens/NearbyScreen';
 import { RouteScreen } from './ui/screens/RouteScreen';
 import { SortScreen } from './ui/screens/SortScreen';
 import { Icon, type IconName } from './ui/components/Icon';
 
-type Tab = 'importar' | 'separar' | 'entregar' | 'perto' | 'rota' | 'relatorio';
+type Tab = 'importar' | 'separar' | 'entregar' | 'perto' | 'ler' | 'rota' | 'relatorio';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'importar', label: 'Arquivo', icon: 'file' },
   { id: 'separar', label: 'Carregar', icon: 'bag' },
   { id: 'rota', label: 'Rota', icon: 'map' },
   { id: 'entregar', label: 'Entregar', icon: 'nav' },
   { id: 'perto', label: 'Perto de mim', icon: 'pin' },
+  { id: 'ler', label: 'Ler e ir', icon: 'scan' },
   { id: 'relatorio', label: 'Resumo', icon: 'report' },
 ];
 
@@ -69,6 +71,7 @@ export default function App() {
         {active === 'separar' && session && <ErrorBoundary key="c" name="Carregar"><SortScreen /></ErrorBoundary>}
         {active === 'entregar' && session && <ErrorBoundary key="e" name="Entregar"><DeliveryScreen /></ErrorBoundary>}
         {active === 'perto' && session && <ErrorBoundary key="p" name="Perto de mim"><NearbyScreen onGo={() => go('entregar')} /></ErrorBoundary>}
+        {active === 'ler' && session && <ErrorBoundary key="l" name="Ler e ir"><ScanGoScreen onGo={() => go('entregar')} /></ErrorBoundary>}
         {active === 'rota' && session && <ErrorBoundary key="r" name="Rota"><RouteScreen onBuilt={() => go('separar')} /></ErrorBoundary>}
         {active === 'relatorio' && session && <ReportScreen />}
       </main>
