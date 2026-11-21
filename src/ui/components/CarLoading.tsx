@@ -86,7 +86,8 @@ export function CarLoading({ session: s }: { session: Session }) {
                     return (
                       <div key={v.stop.id} className="ss-lrow" style={{ cursor: 'default' }}>
                         <span className="nums">{v.packages.map(p => { const r = s.sorted?.[p.id]; return <span key={p.id} className={'ss-pkc ' + (!r ? 'no' : r.bag === b.group.index ? 'ok' : 'off')}>{r ? (r.bag === b.group.index ? '✓ ' : `⚠ na ${r.bag} · `) : ''}{tag(p)}</span>; })}</span>
-                        <span className="addr">{isTop ? 'por cima · ' : ''}{v.position}ª · {a.street.replace(/^(Rua|Avenida|R\.?|Av\.?) /, '')}, {a.number}</span>
+                        <span className="addr">{isTop ? 'por cima · ' : ''}{v.position}ª · {a.street.replace(/^(Rua|Avenida|R\.?|Av\.?) /, '')}, {a.number}{s.exitOfDistrict?.includes(v.stop.id) ? ` · na saída de ${a.district}` : ''}</span>
+                        {!s.carLoad && !s.exitOfDistrict?.includes(v.stop.id) && a.district ? <button className="ss-exitbtn" onClick={() => { const err = useStore.getState().leaveForDistrictExit(v.stop.id); if (err) alert(err); }}>Deixar para a saída de {a.district}</button> : null}
                       </div>
                     );
                   })}

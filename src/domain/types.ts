@@ -104,6 +104,8 @@ export interface RoutePlan {
   start?: { lat: number; lng: number; label: string };
   /** Tempo de carro da saída até a primeira entrega (s). */
   firstSeconds?: number;
+  /** Decisões automáticas nas transições entre bairros: atender na chegada ou na saída. */
+  regionChecks?: RegionCheck[];
   /** Tempo de carro até cada parada, a partir da anterior na sequência (s). */
   legSeconds?: Record<string, number>;
 }
@@ -131,4 +133,17 @@ export interface AuditEntry {
   stopId: string;
   justification: string;
   pendingStopIds: string[];
+}
+
+export interface RegionCheck {
+  stopId: string;
+  district: string;
+  nextId?: string;
+  nextDistrict?: string;
+  /** rota inteira com a parada na saída do bairro */
+  exit: { seconds: number; meters: number; repeats: number };
+  /** rota inteira com a parada na chegada ao bairro */
+  arrival: { seconds: number; meters: number; repeats: number };
+  chosen: 'saida' | 'chegada';
+  position: number;
 }

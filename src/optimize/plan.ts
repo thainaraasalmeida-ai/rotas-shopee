@@ -1,6 +1,6 @@
 import { effectiveAddress, normalizeStreet, streetKey } from '../domain/address';
 import { groupColorKey } from '../domain/colors';
-import type { Group, RoutePlan, Stop } from '../domain/types';
+import type { Group, RegionCheck, RoutePlan, Stop } from '../domain/types';
 import type { TravelMatrix } from '../services/routing/types';
 import { splitIntoGroups } from './groups';
 import { solveSequence, travelTime } from './sequence';
@@ -11,6 +11,7 @@ export interface PlanOptions {
   importedOrder?: string[];
   /** Tempo do ponto de partida até cada parada localizada (mesma ordem de `located`). */
   fromStart?: number[];
+  fromStartMeters?: number[];
   /** Pontos de coleta: entram na sequência, mas não no corte dos grupos comuns. */
   exclude?: string[];
   first?: string;
@@ -71,6 +72,8 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
   const remaining = res.order.filter(i => located[i].id !== opts.first);
   const last = new Set(opts.last);
   const orderIdx = [...preferFirst, ...remaining.filter(i => !last.has(located[i].id)), ...remaining.filter(i => last.has(located[i].id))];
+  const region = regionTransitions(orderIdx, located, matrix, opts, last);
+  orderIdx.splice(0, orderIdx.length, ...region.order);
   const orderedLocated = orderIdx.map((i) => located[i]);
   const unlocated = stops.filter((s) => !idxOf.has(s.id));
   const order = [...orderedLocated.map((s) => s.id), ...unlocated.map((s) => s.id)];
@@ -103,6 +106,12 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
   } else {
     notes.push('O mapa não identificou entregas nos dois lados da avenida divisora. Confira as travessias no Waze.');
   }
+  for (const c of region.checks) {
+    const st = located.find(x => x.id === c.stopId)!; const a = effectiveAddress(st);
+    const nx = c.nextId ? effectiveAddress(located.find(x => x.id === c.nextId)!) : undefined;
+    const f = (x: { seconds: number; meters: number }) => `${(x.seconds / 60).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} min · ${(x.meters / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km`;
+    notes.push(`Saída de ${c.district}: ${a.street}, ${a.number} ficou na ${c.position}ª parada, antes de ${nx ? `${nx.street}, ${nx.number} (${c.nextDistrict})` : 'o próximo bairro'}. Rota inteira: na saída ${f(c.exit)}; na chegada ${f(c.arrival)}.`);
+  }
   if (unlocated.length) notes.push(`${unlocated.length} parada(s) sem localização ficaram no fim da rota. Corrija o endereço ou fixe a posição no mapa.`);
   const approx = located.filter((s) => s.geo && !s.geo.verified && s.geo.precision === 'rua').length;
   if (approx) notes.push(`${approx} parada(s) localizada(s) só pela rua (sem o número exato no mapa). A ordem dentro dessas ruas pode precisar de ajuste; fixe a posição pelo GPS na porta para melhorar as próximas rotas.`);
@@ -114,9 +123,63 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
     groups,
     createdAt: Date.now(),
     totalSeconds: travelTime(orderIdx, matrix.durations, opts.fromStart),
+    regionChecks: region.checks,
     firstSeconds: opts.fromStart && orderIdx.length ? opts.fromStart[orderIdx[0]] : undefined,
     legSeconds: Object.fromEntries(orderIdx.map((i, k) => [located[i].id, k === 0 ? (opts.fromStart?.[i] ?? 0) : matrix.durations[orderIdx[k - 1]][i]])),
     importedSeconds,
     notes,
   };
+}
+
+const TIE_SECONDS = 15;
+
+/** Rota inteira (saída → todas as paradas): tempo, distância e quantas vezes volta a uma rua já deixada. */
+function routeCost(order: number[], m: TravelMatrix, fromStart?: number[], fromStartM?: number[], street?: string[]) {
+  let sec = fromStart && order.length ? fromStart[order[0]] : 0;
+  let met = fromStartM && order.length ? fromStartM[order[0]] : 0;
+  for (let i = 0; i < order.length - 1; i++) { sec += m.durations[order[i]][order[i + 1]]; met += m.distances?.[order[i]]?.[order[i + 1]] ?? 0; }
+  let repeats = 0;
+  if (street) { const left = new Set<string>(); for (let i = 1; i < order.length; i++) { const a = street[order[i - 1]], b = street[order[i]]; if (a !== b) { left.add(a); if (left.has(b)) repeats++; } } }
+  return { seconds: sec, meters: met, repeats };
+}
+
+/**
+ * Transições entre bairros: para cada trecho contínuo de um bairro, compara atender a parada da ponta
+ * na chegada ou na saída (a caminho do próximo bairro), sempre medindo a rota INTEIRA pela matriz de carro
+ * (mão única e conversões já estão na matriz). Fica a de menor tempo; empate (até 15 s) → a que repete menos ruas.
+ */
+function regionTransitions(order: number[], located: Stop[], m: TravelMatrix, opts: PlanOptions, last: Set<string | undefined>) {
+  const dist = located.map(st => normalizeStreet(effectiveAddress(st).district || ''));
+  const street = located.map(st => streetKey(effectiveAddress(st)));
+  const fixed = (i: number) => last.has(located[i].id) || located[i].id === opts.first;
+  let cur = [...order];
+  const checks: RegionCheck[] = [];
+  const runs = () => { const r: [number, number][] = []; let a = 0; for (let i = 1; i <= cur.length; i++) if (i === cur.length || dist[cur[i]] !== dist[cur[a]]) { r.push([a, i - 1]); a = i; } return r; };
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    for (const [a, b] of runs()) {
+      if (b - a < 1 || !dist[cur[a]] || b === cur.length - 1) continue; // precisa de transição para outro bairro
+      // candidatas: a parada da chegada (vai para a saída) e a da saída (vai para a chegada)
+      for (const [fromPos, toPos] of [[a, b], [b, a]] as const) {
+        const idx = cur[fromPos];
+        if (fixed(idx)) continue;
+        const moved = [...cur]; moved.splice(fromPos, 1); moved.splice(toPos, 0, idx);
+        const now = routeCost(cur, m, opts.fromStart, opts.fromStartMeters, street);
+        const alt = routeCost(moved, m, opts.fromStart, opts.fromStartMeters, street);
+        const better = alt.seconds < now.seconds - TIE_SECONDS || (Math.abs(alt.seconds - now.seconds) <= TIE_SECONDS && alt.repeats < now.repeats);
+        if (better) { cur = moved; changed = true; break; }
+      }
+    }
+    if (!changed) break;
+  }
+  // registro: para cada saída de bairro, a comparação chegada × saída da parada que ficou na ponta de saída
+  for (const [a, b] of runs()) {
+    if (b - a < 1 || !dist[cur[a]] || b === cur.length - 1) continue;
+    const idx = cur[b];
+    const arrivalOrder = [...cur]; arrivalOrder.splice(b, 1); arrivalOrder.splice(a, 0, idx);
+    const exit = routeCost(cur, m, opts.fromStart, opts.fromStartMeters, street);
+    const arrival = routeCost(arrivalOrder, m, opts.fromStart, opts.fromStartMeters, street);
+    checks.push({ stopId: located[idx].id, district: effectiveAddress(located[idx]).district ?? '', nextId: located[cur[b + 1]]?.id, nextDistrict: effectiveAddress(located[cur[b + 1]]).district, exit, arrival, chosen: 'saida', position: b + 1 });
+  }
+  return { order: cur, checks };
 }

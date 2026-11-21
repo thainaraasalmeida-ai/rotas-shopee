@@ -180,3 +180,5 @@
 .ss-pkc.off { background: #fff1d6; color: #8a4b00; }
 .ss-pkc.no { background: transparent; }
 .load-switch { display: grid; grid-template-columns: 1fr 1fr; }
+.ss-exitbtn { grid-column: 1 / -1; justify-self: start; font-size: 12px; padding: 3px 8px; border-radius: 8px; border: 1px solid #c9d2dc; background: #fff; color: #234; margin-top: 2px; }
+.ss-lrow { flex-wrap: wrap; }

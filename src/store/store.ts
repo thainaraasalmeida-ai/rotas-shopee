@@ -5,6 +5,7 @@ import type { Address, AuditEntry, GeoPoint, ImportIssue, ImportResult, PackageS
 import { importedPlan } from '../optimize/plan';
 import { detectCollectionPoints, regroup, type SpecialKind } from '../optimize/special';
 import { parseBackup, safeStorage } from './persistence';
+import { moveToDistrictExit } from '../optimize/districtExit';
 import { combineTracking } from '../importers/combine';
 
 export interface StartPoint { lat: number; lng: number; label: string; source: 'gps' | 'ponto-de-carga' | 'ajustado'; accuracy?: number; at: number }
@@ -30,6 +31,8 @@ export interface Session {
   detour?: { stopId: string; startedAt: number };
   /** Ponto de saída confirmado para esta rota. */
   start?: StartPoint;
+  /** Paradas marcadas para "Deixar para a saída deste bairro". */
+  exitOfDistrict?: string[];
   /** Separação: em qual sacola cada pacote foi guardado (pela leitura da etiqueta). Não muda a sequência nem a entrega. */
   sorted?: Record<string, { bag: number; colorKey: string; at: number }>;
   /** Jornada: organização do carro e saída para entregar (meta de 4 horas). */
@@ -82,6 +85,7 @@ interface State {
   startDetour(stopId: string): void;
   setStart(p: StartPoint | undefined): void;
   recordSort(packageId: string, bag: number, colorKey: string): void;
+  leaveForDistrictExit(stopId: string): string | undefined;
   depart(): void;
   saveLoadPoint(p: LoadPoint | undefined): void;
   endDetour(): void;
@@ -272,6 +276,19 @@ export const useStore = create<State>()(
           const key = addressKey(effectiveAddress(s.stops[stopId]));
           set({ verifiedGeo: { ...get().verifiedGeo, [key]: geo } });
         }
+      },
+      leaveForDistrictExit(stopId) {
+        const s = get().session;
+        if (!s) return 'Nenhuma rota.';
+        if (s.carLoad) return 'O carro já foi carregado. Use “Perto de mim” para mudar a ordem sem trocar as sacolas.';
+        const r = moveToDistrictExit(s.plan.order, s.plan.groups, s.stops, stopId, id => isPending(s.stops[id]));
+        if (!r) return 'Esta é a única parada deste bairro.';
+        const exitOfDistrict = [...new Set([...(s.exitOfDistrict ?? []), stopId])];
+        const st = s.stops[stopId];
+        const note = `${st.original.street}, ${st.original.number} ficou para a saída de ${st.original.district || 'seu bairro'}.`;
+        set({ session: { ...s, exitOfDistrict, cursor: undefined, plan: { ...s.plan, order: r.order, groups: r.groups, notes: [note, ...s.plan.notes.filter(n => n !== note)] } } });
+        get().addAudit({ at: Date.now(), kind: 'correcao', stopId, justification: 'Deixar para a saída deste bairro', pendingStopIds: [] });
+        return undefined;
       },
       recordSort(packageId, bag, colorKey) {
         const s = get().session;

@@ -5,6 +5,7 @@ import { isPending, orderedStops, useStore } from '../store/store';
 import { fetchDivider, sideOf } from './divider';
 import { nominatim } from './geocoding/nominatim';
 import type { GeocodingProvider } from './geocoding/types';
+import { moveToDistrictExit } from '../optimize/districtExit';
 import { osrmProvider } from './routing/osrm';
 import type { LatLng, TravelMatrix } from './routing/types';
 
@@ -112,17 +113,25 @@ export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: 
     throw new Error(`Serviço de rotas indisponível (${(e as Error).message}). A ordem atual foi mantida. Você pode seguir o plano salvo e recalcular quando a conexão voltar.`);
   }
   let fromStart: number[] | undefined;
+  let fromStartMeters: number[] | undefined;
   if (start) {
     const si = points.length - 1;
     fromStart = matrix.durations[si].slice(0, si);
+    fromStartMeters = matrix.distances?.[si]?.slice(0, si);
     matrix = { ...matrix, durations: matrix.durations.slice(0, si).map((r) => r.slice(0, si)) };
   }
   onProgress({ step: 'Otimizando a sequência de todas as paradas', done: 0, total: 1 });
-  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, first, last:session.pinnedLast, exclude: Object.keys(session.specials ?? {}) });
+  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, fromStartMeters, first, last:session.pinnedLast, exclude: Object.keys(session.specials ?? {}) });
   signal?.throwIfAborted();
   const latest = useStore.getState().session;
   if (latest !== session || useStore.getState().settings !== settings) throw new Error('A rota mudou durante o cálculo. Recalcule as pendências.');
   if (start) { plan.start = { lat: start.lat, lng: start.lng, label: start.label ?? 'Posição atual' }; plan.notes.unshift(`Saída: ${plan.start.label}. O trajeto até a primeira entrega entrou no cálculo.`); }
+  // Respeita as paradas marcadas para a saída do bairro em qualquer recálculo.
+  for (const id of session.exitOfDistrict ?? []) {
+    if (!session.stops[id] || !isPending(session.stops[id])) continue;
+    const moved = moveToDistrictExit(plan.order, plan.groups, session.stops, id);
+    if (moved?.changed) { plan.order = moved.order; plan.groups = moved.groups; }
+  }
   const completed = all.filter(stop => !isPending(stop));
   plan.order = [...completed.map(stop => stop.id), ...plan.order];
   if (session.carLoad) {
