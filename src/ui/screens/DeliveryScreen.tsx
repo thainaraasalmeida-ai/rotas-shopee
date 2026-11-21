@@ -248,6 +248,7 @@ export function DeliveryScreen() {
                   <span className="n">{i + 1}</span>
                   <span className="t"><b>{street(st)}</b><span>{effectiveAddress(st).district || '—'} · {st.packages.map(shortLabel).join(' ')}</span></span>
                   <BagMini id={st.id} />
+                  {isPending(st) && st.id !== cur.id ? <button className="ss-exitbtn" onClick={() => { store.startDetour(st.id); setSeqOpen(false); setSelected([]); window.scrollTo({ top: 0 }); }}>Fazer esta agora</button> : null}
                 </div>
               ))}
             </div>
