@@ -15,6 +15,19 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Se o app não iniciar (arquivo antigo preso no cache), limpa só os arquivos do app e recarrega uma vez.
+      // Rotas, sacolas e entregas ficam no armazenamento local e NÃO são apagadas.
+      setTimeout(function () {
+        if (window.__shoshoBooted) return;
+        try { if (sessionStorage.getItem('shoshoRecovered')) return; sessionStorage.setItem('shoshoRecovered', '1'); } catch (e) {}
+        var done = function () { location.reload(); };
+        var p = [];
+        if (navigator.serviceWorker) p.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+        if (window.caches) p.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+        Promise.all(p).then(done, done);
+      }, 6000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

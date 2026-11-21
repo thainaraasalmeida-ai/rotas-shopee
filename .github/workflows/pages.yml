@@ -22,6 +22,13 @@ jobs:
       - run: npm ci
       - run: npx vitest run
       - run: npm run build
+      - name: Manter arquivos das versões anteriores (página aberta numa versão antiga não fica em branco)
+        run: |
+          SITE="https://thainaraasalmeida-ai.github.io/rotas-shopee"
+          { curl -fsSL "$SITE/kept-assets.txt" || true; curl -fsSL "$SITE/sw.js" | grep -o 'assets/[^",]*' || true; } | sort -u > /tmp/kept.txt
+          while read -r f; do [ -n "$f" ] && [ ! -f "dist/$f" ] && curl -fsSL "$SITE/$f" -o "dist/$f" --create-dirs || true; done < /tmp/kept.txt
+          { ls dist/assets | sed 's#^#assets/#'; cat /tmp/kept.txt; } | sort -u > dist/kept-assets.txt
+          wc -l dist/kept-assets.txt
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

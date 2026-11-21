@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 
+(window as Window & { __shoshoBooted?: boolean }).__shoshoBooted = true;
+try { sessionStorage.removeItem('shoshoRecovered'); } catch { /* */ }
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
