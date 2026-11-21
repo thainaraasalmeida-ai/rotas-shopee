@@ -57,7 +57,7 @@ export function ScanSort({ onFound }: { onFound?: (stopId: string) => void } = {
     const r = lookupCode(s, code);
     if (onFound && (r.kind === 'ok' || r.kind === 'repeat')) {
       setLast(r);
-      if (r.stop.packages.some(p => p.status === 'pending')) { onFound(r.stop.id); return; }
+      if (r.pkg.status === 'pending') { onFound(r.stop.id); return; }
       return; // já entregue: mostra o resultado e não navega
     }
     if (r.kind === 'ok' && canPrepareBags(s)) useStore.getState().recordSort(r.pkg.id, r.bag, r.colorKey);
@@ -130,11 +130,23 @@ export function ScanSort({ onFound }: { onFound?: (stopId: string) => void } = {
         const stopPk = last.stop.packages;
         return (
           <div className={'ss-scan-res ' + last.kind} style={{ ['--bc' as string]: c.bg }} role="status">
-            {onFound && !last.stop.packages.some(p => p.status === 'pending') ? <span className="ss-scan-tag">{last.pkg.status === 'delivered' ? 'Este pacote já foi entregue' : last.pkg.status === 'rescheduled' ? `Marcado para voltar outro dia${last.pkg.rescheduledFor ? ' (' + new Date(last.pkg.rescheduledFor + 'T12:00').toLocaleDateString('pt-BR') + ')' : ''} — reabra no Resumo para entregar agora` : 'Registrado como não entregue — reabra no Resumo para entregar agora'}</span> : !onFound && last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
+            {onFound && last.pkg.status !== 'pending' ? <span className="ss-scan-tag">{last.pkg.status === 'delivered' ? 'Este pacote já foi entregue' : last.pkg.status === 'rescheduled' ? `Marcado para voltar outro dia${last.pkg.rescheduledFor ? ' (' + new Date(last.pkg.rescheduledFor + 'T12:00').toLocaleDateString('pt-BR') + ')' : ''} — use os botões abaixo` : 'Registrado como não entregue — use os botões abaixo'}</span> : !onFound && last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
             {!canPrepareBags(session) ? <div className="ss-scan-big"><span>{last.pkg.label}</span><span>→ sacola definida após calcular a rota</span></div> : <div className="ss-scan-big"><span>{last.pkg.extra ? `${last.pkg.label} …${last.pkg.tracking?.slice(-5) ?? ''}` : last.pkg.label}</span><span>→</span><span className="ss-sw" /><span>SACOLA {last.bag} · {c.name.toUpperCase()}</span></div>}
             <div className="ss-scan-mid">{last.position}ª parada · {street(last.stop)}</div>
             {last.kind === 'repeat' ? <div>Este pacote já está na <b>Sacola {last.bag} {c.name}</b>.</div> : null}
-            {stopPk.length > 1 ? <div className="ss-scan-vol">{stopPk.map(p => <span key={p.id} className={session.sorted?.[p.id] ? 'ok' : 'no'}>{session.sorted?.[p.id] ? '✓' : '○'} {p.extra ? `${p.label} …${p.tracking?.slice(-5) ?? ''}` : p.label}</span>)}<em>{stopPk.filter(p => !session.sorted?.[p.id]).length ? `Faltam ${stopPk.filter(p => !session.sorted?.[p.id]).length} desta porta` : 'Todos os volumes desta porta guardados'}</em></div> : null}
+            {onFound ? (() => {
+              const live = useStore.getState().session!.stops[last.stop.id].packages.find(p => p.id === last.pkg.id) ?? last.pkg;
+              const st = () => useStore.getState();
+              const nextDay = () => { const d = new Date(); do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6); return d.toISOString().slice(0, 10); };
+              return <div className="ss-row2" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 6 }}>
+                {live.status === 'pending' ? <button className="ss-btn go" onClick={() => onFound(last.stop.id)}>Abrir esta entrega</button> : null}
+                {live.status === 'rescheduled' || live.status === 'failed' ? <button className="ss-btn go" onClick={() => { st().setPackagesStatus(last.stop.id, 'pending', { packageIds: [last.pkg.id] }); onFound(last.stop.id); }}>Reabrir e entregar agora</button> : null}
+                {live.status === 'failed' || live.status === 'pending' ? <button className="ss-btn ghost" onClick={() => { st().setPackagesStatus(last.stop.id, 'rescheduled', { packageIds: [last.pkg.id], date: nextDay(), reason: 'Volto outro dia — baixa na Shopee, cliente avisado' }); st().setClosed(last.stop.id, last.pkg.id, true); setLast({ ...last }); }}>Volto outro dia · baixa feita</button> : null}
+                {live.status === 'rescheduled' && !live.shopeeClosed ? <button className="ss-btn ghost" onClick={() => { st().setClosed(last.stop.id, last.pkg.id, true); setLast({ ...last }); }}>Marcar baixa na Shopee</button> : null}
+                {live.status === 'rescheduled' && live.shopeeClosed ? <span className="small">✓ Volta {live.rescheduledFor ? new Date(live.rescheduledFor + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }) : 'outro dia'} · baixa na Shopee feita</span> : null}
+              </div>;
+            })() : null}
+            {!onFound && stopPk.length > 1 ? <div className="ss-scan-vol">{stopPk.map(p => <span key={p.id} className={session.sorted?.[p.id] ? 'ok' : 'no'}>{session.sorted?.[p.id] ? '✓' : '○'} {p.extra ? `${p.label} …${p.tracking?.slice(-5) ?? ''}` : p.label}</span>)}<em>{stopPk.filter(p => !session.sorted?.[p.id]).length ? `Faltam ${stopPk.filter(p => !session.sorted?.[p.id]).length} desta porta` : 'Todos os volumes desta porta guardados'}</em></div> : null}
           </div>
         );
       })(last as Extract<ScanResult, { kind: 'ok' | 'repeat' }>)) : <div className="small muted">Pegue qualquer pacote da pilha. A câmera continua aberta para o próximo. A leitura registra só a sacola onde o pacote foi guardado.</div>}
