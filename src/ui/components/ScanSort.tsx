@@ -130,7 +130,7 @@ export function ScanSort({ onFound }: { onFound?: (stopId: string) => void } = {
         const stopPk = last.stop.packages;
         return (
           <div className={'ss-scan-res ' + last.kind} style={{ ['--bc' as string]: c.bg }} role="status">
-            {onFound && !last.stop.packages.some(p => p.status === 'pending') ? <span className="ss-scan-tag">Este endereço já foi entregue</span> : !onFound && last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
+            {onFound && !last.stop.packages.some(p => p.status === 'pending') ? <span className="ss-scan-tag">{last.pkg.status === 'delivered' ? 'Este pacote já foi entregue' : last.pkg.status === 'rescheduled' ? `Marcado para voltar outro dia${last.pkg.rescheduledFor ? ' (' + new Date(last.pkg.rescheduledFor + 'T12:00').toLocaleDateString('pt-BR') + ')' : ''} — reabra no Resumo para entregar agora` : 'Registrado como não entregue — reabra no Resumo para entregar agora'}</span> : !onFound && last.kind === 'repeat' ? <span className="ss-scan-tag">Já lido · não somou de novo</span> : null}
             {!canPrepareBags(session) ? <div className="ss-scan-big"><span>{last.pkg.label}</span><span>→ sacola definida após calcular a rota</span></div> : <div className="ss-scan-big"><span>{last.pkg.extra ? `${last.pkg.label} …${last.pkg.tracking?.slice(-5) ?? ''}` : last.pkg.label}</span><span>→</span><span className="ss-sw" /><span>SACOLA {last.bag} · {c.name.toUpperCase()}</span></div>}
             <div className="ss-scan-mid">{last.position}ª parada · {street(last.stop)}</div>
             {last.kind === 'repeat' ? <div>Este pacote já está na <b>Sacola {last.bag} {c.name}</b>.</div> : null}

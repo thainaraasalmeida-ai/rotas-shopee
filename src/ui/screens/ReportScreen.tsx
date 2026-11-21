@@ -17,6 +17,9 @@ const KIND: Record<string, string> = {
   baixa: 'Registro manual de baixa',
 };
 
+function nextBusinessDay() { const d = new Date(); do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6); return d.toISOString().slice(0, 10); }
+function nextBusinessDayLabel() { return new Date(nextBusinessDay() + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long' }); }
+
 export function ReportScreen() {
   const { session, clearSession } = useStore();
   const s = session!;
@@ -66,12 +69,20 @@ export function ReportScreen() {
       {outstanding.map(pkg => <div key={pkg.id} className="warn">Baixa sem entrega física · {pkg.label} · {formatAddress(effectiveAddress(pkg.stop), false)}</div>)}
       {scheduled.length ? <h3>Voltar outro dia ({scheduled.length} pacotes)</h3> : null}
       {scheduled.map(p => <div className="box" key={p.id}><b>{p.label}{p.extra && p.tracking ? ` …${p.tracking.slice(-5)}` : ''}</b> · {p.rescheduledFor ? new Date(p.rescheduledFor + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'sem data'} · {formatAddress(effectiveAddress(p.stop))}{(() => { const b = physicalBag(session!, p.stop.id, p.id); return b ? ` · Sacola ${b.index} ${colorOf(b.colorKey).name}` : ''; })()}{p.shopeeClosed ? ' · baixa na Shopee feita' : ''}
-        <button className="btn small" onClick={() => useStore.getState().setPackagesStatus(p.stop.id,'pending',{packageIds:[p.id]})}>Reabrir pacote</button>
+        <div className="row" style={{ gap: 6, marginTop: 4 }}>
+          <button className="btn small" onClick={() => useStore.getState().setClosed(p.stop.id, p.id, !p.shopeeClosed)}>{p.shopeeClosed ? 'Desmarcar baixa' : 'Marcar baixa na Shopee'}</button>
+          <button className="btn small" onClick={() => useStore.getState().setPackagesStatus(p.stop.id,'pending',{packageIds:[p.id]})}>Reabrir pacote</button>
+        </div>
       </div>)}
       {failed.length ? (
         <div className="stack">
-          <h3>Não entregues</h3>
-          {failed.map((p) => <div key={p.id} className="err small">{p.label} — {formatAddress(effectiveAddress(p.stop), false)} — {p.failReason}</div>)}
+          <h3>Não entregues ({failed.length})</h3>
+          <button className="btn primary" onClick={() => { const st = useStore.getState(); for (const p of failed) { st.setPackagesStatus(p.stop.id, 'rescheduled', { packageIds: [p.id], date: nextBusinessDay(), reason: `Volto outro dia — ${p.failReason ?? 'não entregue'}` }); st.setClosed(p.stop.id, p.id, true); } setCopied(`${failed.length} pacotes foram para “Voltar outro dia” com baixa na Shopee.`); }}>Mandar todos para {nextBusinessDayLabel()} · já dei baixa na Shopee</button>
+          {failed.map((p) => <div key={p.id} className="err small">{p.label}{p.extra && p.tracking ? ` …${p.tracking.slice(-5)}` : ''} — {formatAddress(effectiveAddress(p.stop), false)} — {p.failReason}
+            <div className="row" style={{ gap: 6, marginTop: 4 }}>
+              <button className="btn small" onClick={() => { const st = useStore.getState(); st.setPackagesStatus(p.stop.id, 'rescheduled', { packageIds: [p.id], date: nextBusinessDay(), reason: `Volto outro dia — ${p.failReason ?? 'não entregue'}` }); st.setClosed(p.stop.id, p.id, true); }}>Volto {nextBusinessDayLabel()} · baixa feita</button>
+              <button className="btn small" onClick={() => useStore.getState().setPackagesStatus(p.stop.id, 'pending', { packageIds: [p.id] })}>Reabrir</button>
+            </div></div>)}
         </div>
       ) : null}
       {pending.length && pending.length < pk.length ? (
