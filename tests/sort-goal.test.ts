@@ -52,3 +52,9 @@ describe('Meta de 4 horas', () => {
     expect(f.late).toBe(true);
   });
 });
+describe('Busca pelo final do rastreio', () => {
+  it('acha o extra sem número pelos últimos caracteres', () => {
+    const r = lookupCode(mk(), '0003');
+    expect(r.kind).toBe('ok');
+  });
+});

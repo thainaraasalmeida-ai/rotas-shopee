@@ -17,6 +17,8 @@ export function lookupCode(s: Session, raw: string): ScanResult {
   const all = Object.values(s.stops).flatMap(stop => stop.packages.map(pkg => ({ stop, pkg })));
   let hits = all.filter(({ pkg }) => pkg.tracking?.trim().toUpperCase() === code);
   if (!hits.length && /^#?\d+$/.test(code)) hits = all.filter(({ pkg }) => !pkg.extra && pkg.number === parseInt(code.replace('#', ''), 10));
+  // final do rastreio digitado (ex.: 944D) — útil para os extras "+1", "+2"… sem número
+  if (!hits.length && code.length >= 4 && !/^#?\d{1,3}$/.test(code)) hits = all.filter(({ pkg }) => pkg.tracking?.trim().toUpperCase().endsWith(code));
   if (!hits.length) return { kind: 'foreign', code };
   if (hits.length > 1) return { kind: 'ambiguous', code };
   const { stop, pkg } = hits[0];
@@ -90,7 +92,7 @@ export function ScanSort() {
       {scanning ? <video ref={video} muted playsInline className="ss-scan-video" /> : null}
       {camMsg ? <div className="ss-near-warn">{camMsg}</div> : null}
       <form className="ss-scan-form" onSubmit={e => { e.preventDefault(); recent.current = { code: '', at: 0 }; handle(typed); setTyped(''); }}>
-        <input aria-label="Código da etiqueta" placeholder="Código de barras ou leitor externo" value={typed} onChange={e => setTyped(e.target.value)} autoCapitalize="characters" autoComplete="off" />
+        <input aria-label="Código da etiqueta" placeholder="#número, rastreio ou final do rastreio" value={typed} onChange={e => setTyped(e.target.value)} autoCapitalize="characters" autoComplete="off" />
         <button className="ss-btn ghost" disabled={!typed.trim()}>Ler</button>
       </form>
 
