@@ -258,6 +258,17 @@ export function DeliveryScreen() {
 
       <Modal open={failOpen} title="Não entregue" onClose={() => setFailOpen(false)}>
         <div className="stack">
+          {(() => {
+            const d = new Date(); do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+            const next = d.toISOString().slice(0, 10);
+            const label = d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+            return <button className="btn primary big" disabled={!target(cur).length} onClick={() => {
+              const ids = target(cur);
+              store.setPackagesStatus(cur.id, 'rescheduled', { packageIds: ids, date: date || next, reason: 'Volto outro dia — baixa na Shopee, cliente avisado' });
+              for (const id of ids) store.setClosed(cur.id, id, true);
+              setFailOpen(false); setDate(''); setFailReason(''); advance(cur.id);
+            }}>Volto outro dia ({date ? new Date(date + 'T12:00').toLocaleDateString('pt-BR') : label}) · já dei baixa na Shopee</button>;
+          })()}
           {FAIL_REASONS.map((r) => <button key={r} className={`btn ${failReason === r ? 'primary' : ''}`} onClick={() => setFailReason(r)}>{r}</button>)}
           <input value={failReason} onChange={(e) => setFailReason(e.target.value)} placeholder="Outro motivo" />
           <button className="btn danger big" disabled={!failReason.trim()} onClick={onFailed}>Registrar não entrega</button>

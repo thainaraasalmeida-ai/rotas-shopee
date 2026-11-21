@@ -1,5 +1,7 @@
 import { autoBackupText, backupText } from '../../store/persistence';
 import { shiftTimes } from '../components/GoalLine';
+import { physicalBag } from '../../store/store';
+import { colorOf } from '../../domain/colors';
 import { useState } from 'react';
 import { effectiveAddress, formatAddress } from '../../domain/address';
 import { orderedStops, useStore } from '../../store/store';
@@ -62,7 +64,8 @@ export function ReportScreen() {
         <div><big>{pk.length}</big>total</div>
       </div>
       {outstanding.map(pkg => <div key={pkg.id} className="warn">Baixa sem entrega física · {pkg.label} · {formatAddress(effectiveAddress(pkg.stop), false)}</div>)}
-      {scheduled.map(p => <div className="box" key={p.id}>{p.label} · reagendado para {p.rescheduledFor} · {formatAddress(effectiveAddress(p.stop))}
+      {scheduled.length ? <h3>Voltar outro dia ({scheduled.length} pacotes)</h3> : null}
+      {scheduled.map(p => <div className="box" key={p.id}><b>{p.label}{p.extra && p.tracking ? ` …${p.tracking.slice(-5)}` : ''}</b> · {p.rescheduledFor ? new Date(p.rescheduledFor + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'sem data'} · {formatAddress(effectiveAddress(p.stop))}{(() => { const b = physicalBag(session!, p.stop.id, p.id); return b ? ` · Sacola ${b.index} ${colorOf(b.colorKey).name}` : ''; })()}{p.shopeeClosed ? ' · baixa na Shopee feita' : ''}
         <button className="btn small" onClick={() => useStore.getState().setPackagesStatus(p.stop.id,'pending',{packageIds:[p.id]})}>Reabrir pacote</button>
       </div>)}
       {failed.length ? (
