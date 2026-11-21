@@ -58,3 +58,14 @@ describe('Busca pelo final do rastreio', () => {
     expect(r.kind).toBe('ok');
   });
 });
+describe('Número +N da etiqueta da gaiola', () => {
+  it('pede para escolher entre os extras e depois reconhece pelo apelido', () => {
+    const s = mk();
+    const r = lookupCode(s, '+3');
+    expect(r.kind).toBe('choose');
+    const s2 = { ...s, stickerAlias: { '+3': 'a3' } } as Session;
+    const r2 = lookupCode(s2, '+3');
+    expect(r2.kind).toBe('ok');
+    if (r2.kind === 'ok') expect(r2.pkg.id).toBe('a3');
+  });
+});

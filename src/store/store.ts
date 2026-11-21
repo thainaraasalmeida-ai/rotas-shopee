@@ -31,6 +31,8 @@ export interface Session {
   detour?: { stopId: string; startedAt: number };
   /** Ponto de saída confirmado para esta rota. */
   start?: StartPoint;
+  /** Número da etiqueta da gaiola (+2, +3…) → pacote extra, aprendido na leitura. */
+  stickerAlias?: Record<string, string>;
   /** Bairro para começar a rota (comércio que fecha cedo). */
   firstDistrict?: string;
   /** Paradas marcadas para "Deixar para a saída deste bairro". */
@@ -90,6 +92,7 @@ interface State {
   leaveForDistrictExit(stopId: string): string | undefined;
   depart(): void;
   setFirstDistrict(d: string | undefined): void;
+  setStickerAlias(code: string, packageId: string): void;
   arriveHome(): void;
   saveLoadPoint(p: LoadPoint | undefined): void;
   endDetour(): void;
@@ -305,6 +308,11 @@ export const useStore = create<State>()(
         if (!s || s.shift?.returnedAt) return;
         const last = Math.max(0, ...s.audit.filter(a => a.kind === 'pacote').map(a => a.at));
         set({ session: { ...s, shift: { ...s.shift, lastDeliveryAt: last || undefined, returnedAt: Date.now() } } });
+      },
+      setStickerAlias(code, packageId) {
+        const s = get().session;
+        if (!s) return;
+        set({ session: { ...s, stickerAlias: { ...s.stickerAlias, [code]: packageId } } });
       },
       setFirstDistrict(d) {
         const s = get().session;

@@ -9,7 +9,8 @@ interface Detector { detect(source: HTMLVideoElement): Promise<Array<{ rawValue:
 
 export type ScanResult =
   | { kind: 'ok' | 'repeat'; stop: Stop; pkg: Package; bag: number; colorKey: string; position: number; code: string }
-  | { kind: 'foreign' | 'ambiguous'; code: string };
+  | { kind: 'foreign' | 'ambiguous'; code: string }
+  | { kind: 'choose'; code: string; options: { stop: Stop; pkg: Package; bag: number; colorKey: string; position: number }[] };
 
 /** Identifica o pacote pelo código de barras completo (inclui extras sem número). Aceita também "#115" digitado. */
 export function lookupCode(s: Session, raw: string): ScanResult {
@@ -19,6 +20,15 @@ export function lookupCode(s: Session, raw: string): ScanResult {
   if (!hits.length && /^#?\d+$/.test(code)) hits = all.filter(({ pkg }) => !pkg.extra && pkg.number === parseInt(code.replace('#', ''), 10));
   // final do rastreio digitado (ex.: 944D) — útil para os extras "+1", "+2"… sem número
   if (!hits.length && code.length >= 4 && !/^#?\d{1,3}$/.test(code)) hits = all.filter(({ pkg }) => pkg.tracking?.trim().toUpperCase().endsWith(code));
+  // "+3" da etiqueta: a planilha da Shopee não traz esse número; usa o apelido aprendido ou pede para escolher
+  if (!hits.length && /^\+\d+$/.test(code)) {
+    const alias = all.filter(({ pkg }) => s.stickerAlias?.[code] === pkg.id);
+    if (alias.length === 1) hits = alias;
+    else {
+      const extras = all.filter(({ pkg }) => pkg.extra).sort((a, b) => Number(!!s.sorted?.[a.pkg.id]) - Number(!!s.sorted?.[b.pkg.id]));
+      if (extras.length) return { kind: 'choose', code, options: extras.map(({ stop, pkg }) => { const rec = s.sorted?.[pkg.id]; const g = groupOfStop(s, stop.id); return { stop, pkg, bag: rec?.bag ?? g?.index ?? 0, colorKey: rec?.colorKey ?? g?.colorKey ?? 'cinza', position: s.plan.order.indexOf(stop.id) + 1 }; }) };
+    }
+  }
   if (!hits.length) return { kind: 'foreign', code };
   if (hits.length > 1) return { kind: 'ambiguous', code };
   const { stop, pkg } = hits[0];
@@ -96,7 +106,17 @@ export function ScanSort() {
         <button className="ss-btn ghost" disabled={!typed.trim()}>Ler</button>
       </form>
 
-      {last ? (last.kind === 'foreign' || last.kind === 'ambiguous' ? (
+      {last?.kind === 'choose' ? (
+        <div className="ss-scan-res" role="status">
+          <b>Qual é o {last.code}? Confira o final do rastreio na etiqueta (BR…)</b>
+          {last.options.map(o => { const c = colorOf(o.colorKey); return <button key={o.pkg.id} className="ss-btn ghost" style={{ textAlign: 'left' }} onClick={() => {
+            const st = useStore.getState();
+            st.setStickerAlias(last.code, o.pkg.id);
+            if (canPrepareBags(st.session!) && !st.session!.sorted?.[o.pkg.id]) st.recordSort(o.pkg.id, o.bag, o.colorKey);
+            setLast({ kind: st.session!.sorted?.[o.pkg.id] && o.bag ? 'ok' : 'ok', stop: o.stop, pkg: o.pkg, bag: o.bag, colorKey: o.colorKey, position: o.position, code: last.code });
+          }}>…{o.pkg.tracking?.slice(-5)} · {street(o.stop)} · Sacola {o.bag} {c.name}{session.sorted?.[o.pkg.id] ? ' · já lido' : ''}</button>; })}
+        </div>
+      ) : last ? (last.kind === 'foreign' || last.kind === 'ambiguous' ? (
         <div className="ss-scan-res bad" role="alert"><b>{last.kind === 'foreign' ? 'Código de outra rota' : 'Código repetido na planilha'}</b><span>{last.code}</span><span>{last.kind === 'foreign' ? 'Este pacote não está na rota de hoje. Separe à parte e confira a etiqueta.' : 'Confira a etiqueta individualmente.'}</span></div>
       ) : ((last: Extract<ScanResult, { kind: 'ok' | 'repeat' }>) => {
         const c = colorOf(last.colorKey);
