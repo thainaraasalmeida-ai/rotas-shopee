@@ -121,7 +121,7 @@ export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: 
     matrix = { ...matrix, durations: matrix.durations.slice(0, si).map((r) => r.slice(0, si)) };
   }
   onProgress({ step: 'Otimizando a sequência de todas as paradas', done: 0, total: 1 });
-  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, fromStartMeters, first, last:session.pinnedLast, exclude: Object.keys(session.specials ?? {}) });
+  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, fromStartMeters, firstDistrict: session.firstDistrict, first, last:session.pinnedLast, exclude: Object.keys(session.specials ?? {}) });
   signal?.throwIfAborted();
   const latest = useStore.getState().session;
   if (latest !== session || useStore.getState().settings !== settings) throw new Error('A rota mudou durante o cálculo. Recalcule as pendências.');

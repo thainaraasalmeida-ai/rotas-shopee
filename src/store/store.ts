@@ -31,6 +31,8 @@ export interface Session {
   detour?: { stopId: string; startedAt: number };
   /** Ponto de saída confirmado para esta rota. */
   start?: StartPoint;
+  /** Bairro para começar a rota (comércio que fecha cedo). */
+  firstDistrict?: string;
   /** Paradas marcadas para "Deixar para a saída deste bairro". */
   exitOfDistrict?: string[];
   /** Separação: em qual sacola cada pacote foi guardado (pela leitura da etiqueta). Não muda a sequência nem a entrega. */
@@ -87,6 +89,7 @@ interface State {
   recordSort(packageId: string, bag: number, colorKey: string): void;
   leaveForDistrictExit(stopId: string): string | undefined;
   depart(): void;
+  setFirstDistrict(d: string | undefined): void;
   arriveHome(): void;
   saveLoadPoint(p: LoadPoint | undefined): void;
   endDetour(): void;
@@ -302,6 +305,11 @@ export const useStore = create<State>()(
         if (!s || s.shift?.returnedAt) return;
         const last = Math.max(0, ...s.audit.filter(a => a.kind === 'pacote').map(a => a.at));
         set({ session: { ...s, shift: { ...s.shift, lastDeliveryAt: last || undefined, returnedAt: Date.now() } } });
+      },
+      setFirstDistrict(d) {
+        const s = get().session;
+        if (!s) return;
+        set({ session: { ...s, firstDistrict: d, plan: s.plan.method === 'malha-viaria' && !s.carLoad && d !== s.firstDistrict ? { ...s.plan, stale: true } : s.plan } });
       },
       depart() {
         const s = get().session;

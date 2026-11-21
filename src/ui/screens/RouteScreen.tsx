@@ -104,6 +104,16 @@ export function RouteScreen({ onBuilt }: { onBuilt?: () => void } = {}) {
     <div className="screen">
       {picking ? <StartPicker onConfirmed={() => setPicking(false)} /> : s.start ? <div className="ss-built">
         <div className="ss-start-line"><b>Saída:</b> {s.start.label} <button className="ss-linkbtn" onClick={() => setPicking(true)}>Trocar</button></div>
+        {(() => {
+          const count = new Map<string, { label: string; value: string; n: number }>();
+          for (const st of stops) { const raw = (effectiveAddress(st).district || '').trim(); if (!raw) continue; const k = raw.toLowerCase().split(/\s+/)[0]; const e = count.get(k); if (e) { e.n++; if (raw.length < e.label.length) e.label = raw; } else count.set(k, { label: raw, value: raw.split(/\s+/)[0], n: 1 }); }
+          const opts = [...count.values()].sort((a, b) => b.n - a.n);
+          return opts.length > 1 ? <label className="ss-start-save">Começar por este bairro (comércio que fecha cedo)
+            <select value={s.firstDistrict ?? ''} onChange={e => useStore.getState().setFirstDistrict(e.target.value || undefined)}>
+              <option value="">Não — a ShoSho escolhe a melhor ordem</option>
+              {opts.map(o => <option key={o.value} value={o.value}>{o.label.replace(/^./, c => c.toUpperCase())} ({o.n} paradas)</option>)}
+            </select></label> : null;
+        })()}
         <button className="ss-btn go" disabled={!!progress} onClick={() => run('build')}>Calcular rota e montar sacolas</button>
       </div> : null}
       <h2>Seu trajeto</h2>

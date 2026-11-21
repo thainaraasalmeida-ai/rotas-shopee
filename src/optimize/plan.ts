@@ -12,6 +12,8 @@ export interface PlanOptions {
   /** Tempo do ponto de partida até cada parada localizada (mesma ordem de `located`). */
   fromStart?: number[];
   fromStartMeters?: number[];
+  /** Bairro para atender antes de todos (ex.: Centro, comércio que fecha cedo). */
+  firstDistrict?: string;
   /** Pontos de coleta: entram na sequência, mas não no corte dos grupos comuns. */
   exclude?: string[];
   first?: string;
@@ -68,6 +70,24 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
     fromStart: opts.fromStart,
     seeds,
   });
+  if (opts.firstDistrict) {
+    // "Começar por este bairro": resolve primeiro as paradas do bairro (a partir da saída) e depois o resto,
+    // a partir da última parada do bairro. Cada parte usa a matriz de carro.
+    const key = normalizeStreet(opts.firstDistrict);
+    const inDist = (i: number) => { const d = normalizeStreet(effectiveAddress(located[i]).district || ''); return d === key || d.startsWith(key + ' '); };
+    const A = located.map((_, i) => i).filter(inDist);
+    const B = located.map((_, i) => i).filter(i => !inDist(i));
+    if (A.length && B.length) {
+      const sub = (ids: number[], from?: number[]) => {
+        const r = solveSequence({ durations: ids.map(a => ids.map(b => matrix.durations[a][b])), street: ids.map(i => street[i]), houseNumber: ids.map(i => parseInt(effectiveAddress(located[i]).number, 10) || 0), fromStart: from });
+        return r.order.map(k => ids[k]);
+      };
+      const oa = sub(A, opts.fromStart ? A.map(i => opts.fromStart![i]) : undefined);
+      const lastA = oa[oa.length - 1];
+      const ob = sub(B, B.map(i => matrix.durations[lastA][i]));
+      res.order = [...oa, ...ob];
+    }
+  }
   const preferFirst = res.order.filter(i => located[i].id === opts.first);
   const remaining = res.order.filter(i => located[i].id !== opts.first);
   const last = new Set(opts.last);
