@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ee4d2d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rota do dia">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<title>Rota do dia</title>
+<!-- A planilha é lida SÓ no seu celular. Nenhum endereço é enviado para este site. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box}html,body{margin:0}body{font-family:-apple-system,system-ui,sans-serif;background:#f4f4f1;color:#15171c;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+.top{background:var(--c,#ee4d2d);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 14px}.top .t{font-size:28px;font-weight:900;letter-spacing:-.5px}.top .s{font-size:14px;opacity:.95;margin-top:2px}
+.bar{height:8px;background:#ddd}.bar div{height:100%;background:#14934A;width:0}
+main{padding:14px}h2{margin:6px 0 10px;font-size:22px}
+.card{background:#fff;border-radius:20px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:16px;border-top:10px solid var(--c,#ee4d2d);margin-bottom:12px}
+.blk{display:inline-block;color:#fff;background:var(--c);font-weight:900;padding:8px 14px;border-radius:10px;font-size:16px;letter-spacing:.04em}
+.addr{font-size:28px;font-weight:900;letter-spacing:-.5px;margin-top:12px;line-height:1.15}.bairro{color:#666;font-size:17px;margin-top:2px}
+.note{font-size:17px;margin-top:6px;background:#fff8e1;border-radius:8px;padding:6px 10px;display:inline-block}
+.coleta{background:#111;color:#fff;font-weight:900;padding:10px;border-radius:10px;margin-top:10px}
+.ph{font-weight:800;font-size:18px;margin:16px 0 8px}
+.labs{display:flex;flex-wrap:wrap;gap:8px}.lab{font-size:28px;font-weight:900;color:var(--c);background:#fff;border:3px solid var(--c);border-radius:14px;padding:6px 12px;line-height:1.1}.lab small{display:block;font-size:13px;color:#666;font-weight:700}
+.done{background:#e3f5e9;color:#0d5e2e;font-weight:800;padding:10px;border-radius:12px;margin-top:12px}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:60px;border-radius:16px;border:0;font-size:20px;font-weight:900;text-decoration:none;margin-top:10px;font-family:inherit;cursor:pointer}
+.waze{background:#1E9BF0;color:#fff}.ok{background:#14934A;color:#fff}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bad{background:#fff;color:#D42A2A;border:3px solid #D42A2A;font-size:17px;min-height:54px}
+.pul{background:#FFF4CC;color:#7a5300;border:3px solid #E0B400;font-size:17px;min-height:54px}
+.sec{background:#fff;color:#15171c;border:2px solid #ccc;font-size:16px;min-height:52px}
+.pri{background:#ee4d2d;color:#fff}
+.small{display:block;text-align:center;margin-top:12px;font-size:14px;color:#1f5fbf}
+.next{margin-top:4px;font-size:15px;color:#555;background:#fff;border-radius:14px;padding:12px;border-left:8px solid var(--nc,#ccc)}.next b{color:#15171c}
+.info{background:#e8f0fe;color:#1b3d7a;padding:12px;border-radius:12px;font-size:15px;margin:10px 0}.warn{background:#fff4d6;color:#7a5300;padding:12px;border-radius:12px;font-size:15px;margin:10px 0}.err{background:#fde8e8;color:#c62828;padding:12px;border-radius:12px;font-size:15px;margin:10px 0}.okb{background:#e3f5e9;color:#0d5e2e;padding:12px;border-radius:12px;font-size:15px;margin:10px 0;font-weight:700}
+.file{display:flex;justify-content:center;align-items:center;min-height:90px;border:3px dashed #ee4d2d;border-radius:18px;font-size:20px;font-weight:900;background:#fff;color:#ee4d2d;text-align:center;padding:10px}.file input{display:none}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.stats div{background:#fff;border-radius:12px;padding:10px 4px;text-align:center;font-size:13px;color:#666}.stats b{display:block;font-size:24px;color:#15171c}
+.bag{background:#fff;border-radius:16px;margin-bottom:12px;overflow:hidden;border:3px solid var(--c)}.bagh{background:var(--c);color:#fff;font-weight:900;padding:12px;font-size:18px;display:flex;justify-content:space-between}
+.bst{padding:10px 12px;border-bottom:1px solid #eee}.bst:last-child{border-bottom:0}.bst .a{font-size:14px;color:#555;margin-bottom:6px}.bst .a b{color:#15171c}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.sc{border:2px solid #222;background:#fff;border-radius:9px;padding:6px 9px;font-weight:900;font-size:17px;min-height:44px;font-family:inherit}.sc small{font-size:11px;color:#666;margin-left:2px;font-weight:600}.sc.on{background:#14934A;border-color:#14934A;color:#fff}.sc.on small{color:#e6ffe9}
+.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid #ddd;padding-bottom:env(safe-area-inset-bottom);z-index:4}.tabs button{flex:1;border:0;background:none;padding:10px 0;font-size:13px;font-weight:800;color:#777;min-height:64px;font-family:inherit}.tabs button.on{color:#ee4d2d}.tabs .ic{display:block;font-size:22px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;z-index:5}.modal.on{display:flex}.mb{background:#fff;width:100%;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+.mb h3{margin:0 0 8px}.mb button{width:100%;min-height:50px;margin-top:8px;border-radius:12px;border:2px solid #ccc;background:#fff;font-size:16px;font-weight:700;text-align:left;padding:10px 12px;font-family:inherit}.mb button.pc{border-left:8px solid var(--pc)}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid #fff;border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle;margin-right:8px}@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="top" id="top"><div class="t" id="tt">Rota do dia</div><div class="s" id="ts">Escolha a planilha da Shopee</div></div>
+<div class="bar"><div id="pb"></div></div>
+<main id="main"></main>
+<nav class="tabs" id="tabs">
+  <button data-v="arquivo"><span class="ic">📄</span>Planilha</button>
+  <button data-v="sacolas"><span class="ic">🛍</span>Sacolas</button>
+  <button data-v="entregar"><span class="ic">➤</span>Entregar</button>
+</nav>
+<div class="modal" id="modal"><div class="mb" id="mb"></div></div>
+<script>
+'use strict';
+// ---------- cores das sacolas ----------
+const COLORS=[['AZUL','#1E63D6'],['VERDE','#14934A'],['LARANJA','#F07A10'],['ROXO','#7B3FC4'],['VERMELHO','#D42A2A'],['AMARELO','#C9A100'],['ROSA','#E04A9C'],['MARROM','#7A4A26'],['CIANO','#11A3B8'],['PRETO','#111111'],['CINZA','#6B7280'],['LIMA','#6BA32E']];
+const KEY='rota-do-dia-v1';
+let R=null; // {name,date,stops:[...],order:[idx],bags:[[pos..]],method,drive:{opt,shopee},cur,marks:{},sep:{},skip:{}}
+let view='arquivo';
+const $=id=>document.getElementById(id);
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(R))}catch(e){}}
+function load(){try{R=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){R=null}}
+
+// ---------- leitura da planilha ----------
+const norm=s=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const NUMW={'um':1,'dois':2,'tres':3,'quatro':4,'cinco':5,'seis':6,'sete':7,'oito':8,'nove':9,'dez':10,'onze':11,'doze':12,'treze':13,'quatorze':14,'catorze':14,'quinze':15,'dezesseis':16,'dezessete':17,'dezoito':18,'dezenove':19,'vinte':20,'trinta':30};
+function streetKey(st){let s=norm(st).replace(/^(r|rua|av|avenida|tv|travessa|al|alameda|pc|praca) /,'');
+  // "vinte e seis de outubro" == "26 de outubro"
+  s=s.replace(/\b(vinte|trinta)( e (um|dois|tres|quatro|cinco|seis|sete|oito|nove))?\b/g,(m,a,_b,c)=>String(NUMW[a]+(c?NUMW[c]:0)));
+  s=s.replace(/\b(um|dois|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|dezesseis|dezessete|dezoito|dezenove)\b(?= de )/g,m=>String(NUMW[m]));
+  return s}
+function splitAddr(full){
+  let a=String(full||'').replace(/\b\d{5}-?\d{3}\b/,'').trim();
+  const parts=a.split(/\s*[,;]\s*|\s+-\s+/).map(x=>x.trim()).filter(Boolean);
+  let street=parts[0]||a,number='',restStart=1;
+  if(parts[1]&&/^(n[º°o.]?\s*)?\d+\s?[A-Za-z]?$/i.test(parts[1])){number=parts[1].replace(/^n[º°o.]?\s*/i,'');restStart=2}
+  else{const m=street.match(/^(.*\D)\s+(\d+[A-Za-z]?)$/);if(m){street=m[1];number=m[2]}}
+  const extra=[];const b=street.match(/\s+bairro\s+.+$/i);if(b)street=street.slice(0,b.index);
+  const t=street.match(/\s+(fundos|frente)$/i);if(t){extra.push(t[1]);street=street.slice(0,t.index)}
+  const comp=parts.slice(restStart).filter(p=>!/^(bom retiro|ipatinga|mg|minas gerais|brasil|n\/?a)$/i.test(p));
+  return{street:street.trim(),number:number.trim(),comp:[...extra,...comp].join(', ')}}
+function findCol(h,names){const H=h.map(norm);for(const n of names){const i=H.indexOf(n);if(i>=0)return i}for(const n of names){const i=H.findIndex(x=>x.includes(n));if(i>=0)return i}return -1}
+function parseSheet(rows,fileName){
+  let hr=rows.findIndex(r=>r&&r.some(c=>/destination address|endereco/.test(norm(c))));if(hr<0)throw new Error('Não achei a coluna de endereço (Destination Address).');
+  const h=rows[hr];
+  const c={seq:findCol(h,['sequence','sequencia']),tn:findCol(h,['spx tn','tracking number','rastreio']),addr:findCol(h,['destination address','endereco']),bairro:findCol(h,['bairro','neighborhood']),lat:findCol(h,['latitude']),lng:findCol(h,['longitude'])};
+  const by=new Map(),stops=[];let semCoord=0,semNum=0;
+  for(const r of rows.slice(hr+1)){
+    if(!r||!r[c.addr])continue;
+    const ad=splitAddr(r[c.addr]);const key=streetKey(ad.street)+'|'+ad.number.toLowerCase().replace(/\s/g,'');
+    const lat=parseFloat(String(r[c.lat]).replace(',','.')),lng=parseFloat(String(r[c.lng]).replace(',','.'));
+    let s=by.get(key);
+    if(!s){s={street:ad.street,number:ad.number,bairro:c.bairro>=0?String(r[c.bairro]||'').trim():'',comp:[],pk:[],lat:0,lng:0,nc:0,raw:String(r[c.addr])};by.set(key,s);stops.push(s)}
+    const seqRaw=String(r[c.seq]??'').trim();const num=/^\d+$/.test(seqRaw)?parseInt(seqRaw,10):null;if(num===null)semNum++;
+    const tn=c.tn>=0?String(r[c.tn]||''):'';
+    s.pk.push({n:num,l:num!==null?'#'+num:'sem nº',t:tn.slice(-5)});
+    if(ad.comp&&!s.comp.includes(ad.comp))s.comp.push(ad.comp);
+    if(isFinite(lat)&&isFinite(lng)&&Math.abs(lat)>0.1){s.lat+=lat;s.lng+=lng;s.nc++}else semCoord++;
+  }
+  stops.forEach(s=>{if(s.nc){s.lat/=s.nc;s.lng/=s.nc}s.comp=s.comp.join(' · ');s.pk.sort((a,b)=>(a.n??1e9)-(b.n??1e9));s.min=Math.min(...s.pk.map(p=>p.n??1e9))});
+  stops.sort((a,b)=>a.min-b.min); // ordem da Shopee
+  return{name:fileName,stops,semCoord,semNum,total:stops.reduce((a,s)=>a+s.pk.length,0)}}
+
+// ---------- tempos pelas ruas (OSRM) e otimização ----------
+async function osrmMatrix(pts){
+  const n=pts.length,D=Array.from({length:n},()=>new Array(n).fill(0)),CH=90;
+  for(let si=0;si<n;si+=CH)for(let di=0;di<n;di+=CH){
+    const src=[...Array(Math.min(CH,n-si)).keys()].map(i=>i+si),dst=[...Array(Math.min(CH,n-di)).keys()].map(i=>i+di);
+    const idx=[...new Set([...src,...dst])];
+    const url='https://router.project-osrm.org/table/v1/driving/'+idx.map(i=>pts[i].lng.toFixed(6)+','+pts[i].lat.toFixed(6)).join(';')+'?annotations=duration&sources='+src.map(i=>idx.indexOf(i)).join(';')+'&destinations='+dst.map(i=>idx.indexOf(i)).join(';');
+    const j=await fetch(url).then(r=>{if(!r.ok)throw new Error('serviço de rotas respondeu '+r.status);return r.json()});
+    if(j.code!=='Ok')throw new Error(j.message||j.code);
+    src.forEach((i,a)=>dst.forEach((k,b)=>{D[i][k]=j.durations[a][b]??1e5}));
+  }
+  return D}
+const tick=()=>new Promise(r=>setTimeout(r,0));
+async function solve(D,startFrom,onP){
+  const n=D.length;const cost=o=>{let c=startFrom?startFrom[o[0]]:0;for(let i=0;i<o.length-1;i++)c+=D[o[i]][o[i+1]];return c};
+  const nn=s=>{const u=new Array(n).fill(false),o=[s];u[s]=true;let c=s;while(o.length<n){let b=-1,bd=1e12;for(let j=0;j<n;j++)if(!u[j]&&D[c][j]<bd){bd=D[c][j];b=j}o.push(b);u[b]=true;c=b}return o};
+  async function improve(o){let best=o.slice(),bc=cost(best);for(let it=0;it<40;it++){let imp=false;
+    for(let L=1;L<=3;L++)for(let i=0;i+L<=n;i++){const seg=best.slice(i,i+L),rest=best.slice(0,i).concat(best.slice(i+L));for(let k=0;k<=rest.length;k++){if(k===i)continue;const c2=rest.slice(0,k).concat(seg,rest.slice(k));const v=cost(c2);if(v<bc-.01){best=c2;bc=v;imp=true;break}}}
+    await tick();
+    for(let i=0;i<n-1;i++)for(let j=i+1;j<n;j++){const c2=best.slice(0,i).concat(best.slice(i,j+1).reverse(),best.slice(j+1));const v=cost(c2);if(v<bc-.01){best=c2;bc=v;imp=true}}
+    await tick();if(!imp)break}return best}
+  const starts=startFrom?[startFrom.indexOf(Math.min(...startFrom))]:[0,Math.floor(n/3),Math.floor(2*n/3),n-1];
+  const cands=[[...Array(n).keys()],...starts.map(nn)];let best=null,bv=1e18;
+  for(let i=0;i<cands.length;i++){onP&&onP(i+1,cands.length);const o=await improve(cands[i]);const v=cost(o);if(v<bv){bv=v;best=o}}
+  return{order:best,time:bv,shopee:cost([...Array(n).keys()])}}
+function makeBags(order,stops,k){
+  // corta a ordem em k sacolas seguidas, equilibrando pacotes e evitando partir uma rua
+  const P=order.map(i=>stops[i].pk.length),n=P.length,pre=[0];P.forEach(p=>pre.push(pre[pre.length-1]+p));const tgt=pre[n]/k;
+  const same=i=>streetKey(stops[order[i-1]].street)===streetKey(stops[order[i]].street);
+  const f=Array.from({length:k+1},()=>new Array(n+1).fill(1e18)),fr=Array.from({length:k+1},()=>new Array(n+1).fill(-1));f[0][0]=0;
+  for(let g=1;g<=k;g++)for(let j=g;j<=n;j++)for(let i=g-1;i<j;i++){if(f[g-1][i]>=1e18)continue;const d=(pre[j]-pre[i]-tgt)/tgt;const v=f[g-1][i]+900*d*d+(j<n&&same(j)?400:0);if(v<f[g][j]){f[g][j]=v;fr[g][j]=i}}
+  const cuts=[];let j=n;for(let g=k;g>=1;g--){cuts.unshift(j);j=fr[g][j]}
+  const bags=[];let a=0;for(const b of cuts){bags.push([...Array(b-a).keys()].map(x=>x+a));a=b}return bags.filter(b=>b.length)}
+
+// ---------- telas ----------
+function setTop(title,sub,color){$('tt').textContent=title;$('ts').textContent=sub;$('top').style.setProperty('--c',color||'#ee4d2d');document.querySelector('meta[name=theme-color]').setAttribute('content',color||'#ee4d2d')}
+function bagOf(pos){return R.bags.findIndex(b=>b.includes(pos))}
+function stopAt(pos){return R.stops[R.order[pos]]}
+function pending(pos){return !R.marks[pos]}
+function render(){
+  document.querySelectorAll('#tabs button').forEach(b=>{b.classList.toggle('on',b.dataset.v===view);b.disabled=!R&&b.dataset.v!=='arquivo'});
+  if(!R||view==='arquivo')return renderArquivo();
+  if(view==='sacolas')return renderSacolas();
+  return renderEntregar()}
+function stats(){const done=Object.keys(R.marks).length;const pk=R.order.reduce((a,i,pos)=>a+(R.marks[pos]==='ok'?R.stops[i].pk.length:0),0);$('pb').style.width=(done/R.order.length*100)+'%';return{done,pk}}
+
+function renderArquivo(){
+  setTop('Rota do dia',R?R.name:'Escolha a planilha da Shopee');$('pb').style.width='0';
+  let h='<h2>1. Planilha da Shopee</h2><label class="file"><input type="file" id="f" accept=".xlsx,.xls,.csv">📂 Toque para escolher a planilha (.xlsx)</label>'+
+  '<div class="info">A planilha é lida <b>só no seu celular</b>. O app calcula a melhor ordem <b>pelas ruas de verdade</b> (mão única e acessos) e divide em sacolas.</div>'+
+  '<div class="row"><div><b>Sacolas</b><br><select id="k" style="font-size:18px;padding:10px;border-radius:10px;width:100%">'+[4,5,6,7,8,9,10,11,12].map(x=>'<option '+(x===8?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
+  '<div><b>Começar</b><br><select id="st" style="font-size:18px;padding:10px;border-radius:10px;width:100%"><option value="gps">perto de mim (GPS)</option><option value="free">melhor ponto</option></select></div></div>'+
+  '<div id="msg"></div>';
+  if(R){const s=stats();h+='<h2 style="margin-top:20px">Rota carregada</h2><div class="stats"><div><b>'+R.total+'</b>pacotes</div><div><b>'+R.order.length+'</b>paradas</div><div><b>'+R.bags.length+'</b>sacolas</div></div>'+
+    (R.method==='ruas'?'<div class="okb">✔ Ordem calculada pelas ruas: ~'+Math.round(R.drive.opt/60)+' min de carro (ordem da Shopee: ~'+Math.round(R.drive.shopee/60)+' min). Paradas e trânsito não entram nessa conta.</div>':'<div class="warn">Sem internet para o serviço de rotas: usando a ordem da Shopee, sem otimizar.</div>')+
+    R.warnings.map(w=>'<div class="warn">'+esc(w)+'</div>').join('')+
+    '<button class="btn pri" onclick="go(\'sacolas\')">2. Separar sacolas →</button><button class="btn sec" onclick="if(confirm(\'Apagar a rota atual e o progresso?\')){localStorage.removeItem(KEY);R=null;render()}">Apagar rota</button>'}
+  $('main').innerHTML=h;
+  $('f').onchange=e=>e.target.files[0]&&importar(e.target.files[0]);
+}
+async function importar(file){
+  const msg=$('msg');const say=(cls,t)=>msg.innerHTML='<div class="'+cls+'">'+t+'</div>';
+  try{
+    if(R&&Object.keys(R.marks).length&&!confirm('Substituir a rota atual? O progresso dela será apagado.'))return;
+    say('info','<span class="spin" style="border-color:#1b3d7a;border-top-color:transparent"></span>Lendo a planilha…');
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});let rows=[];for(const n of wb.SheetNames){const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:''});if(r.length>rows.length)rows=r}
+    const p=parseSheet(rows,file.name);const k=parseInt($('k').value,10);const warnings=[];
+    if(p.semNum)warnings.push(p.semNum+' pacote(s) sem número na planilha — aparecem como "sem nº" com o final do código.');
+    const loc=p.stops.filter(s=>s.nc),noloc=p.stops.filter(s=>!s.nc);
+    if(noloc.length)warnings.push(noloc.length+' endereço(s) sem coordenada ficaram no fim: '+noloc.map(s=>s.street+', '+s.number).join(' | '));
+    let start=null;
+    if($('st').value==='gps'&&navigator.geolocation){say('info','<span class="spin" style="border-color:#1b3d7a;border-top-color:transparent"></span>Pegando sua localização…');
+      start=await new Promise(res=>navigator.geolocation.getCurrentPosition(q=>res({lat:q.coords.latitude,lng:q.coords.longitude}),()=>res(null),{enableHighAccuracy:true,timeout:12000}));
+      if(!start)warnings.push('GPS não autorizado: a rota começa pelo melhor ponto.')}
+    let order,method='ruas',drive={};
+    try{
+      say('info','<span class="spin" style="border-color:#1b3d7a;border-top-color:transparent"></span>Calculando tempos de carro pelas ruas ('+loc.length+' endereços)…');
+      const pts=loc.map(s=>({lat:s.lat,lng:s.lng}));if(start)pts.push(start);
+      let D=await osrmMatrix(pts);let fromStart=null;if(start){const si=pts.length-1;fromStart=D[si].slice(0,si);D=D.slice(0,si).map(r=>r.slice(0,si))}
+      const res=await solve(D,fromStart,(i,t)=>say('info','<span class="spin" style="border-color:#1b3d7a;border-top-color:transparent"></span>Otimizando a ordem ('+i+'/'+t+')…'));
+      order=res.order;drive={opt:res.time,shopee:res.shopee};
+    }catch(e){method='shopee';order=[...Array(loc.length).keys()];warnings.push('Não consegui calcular pelas ruas ('+e.message+'). Usei a ordem da Shopee.')}
+    const stops=[...loc,...noloc];order=[...order,...noloc.map((_,i)=>loc.length+i)];
+    const bags=makeBags(order,stops,Math.min(k,order.length));
+    R={name:file.name,date:new Date().toISOString(),stops,order,bags,method,drive,warnings,total:p.total,cur:0,marks:{},sep:{},skip:{}};
+    save();view='sacolas';render();window.scrollTo(0,0);
+  }catch(e){say('err','Não consegui ler: '+esc(e.message))}
+}
+function renderSacolas(){
+  const nsep=Object.values(R.sep).filter(Boolean).length;
+  setTop('Separar sacolas',nsep+' de '+R.total+' pacotes separados'+(nsep===R.total?' ✔ carro pronto':''));stats();
+  let h='<div class="info"><b>Como montar:</b> uma sacola por cor, com o número escrito. Os pacotes de cada endereço vão <b>juntos (com elástico)</b>, na ordem abaixo. Coloque a <b>última sacola no fundo</b> e a <b>Sacola 1 por cima</b>. Toque na etiqueta quando o pacote entrar na sacola.</div>';
+  R.bags.forEach((b,bi)=>{const [nm,col]=COLORS[bi%COLORS.length];const pk=b.reduce((a,pos)=>a+stopAt(pos).pk.length,0);const sp=b.reduce((a,pos)=>a+stopAt(pos).pk.filter((x,j)=>R.sep[pos+':'+j]).length,0);
+    h+='<div class="bag" style="--c:'+col+'"><div class="bagh"><span>SACOLA '+(bi+1)+' · '+nm+'</span><span>'+sp+'/'+pk+'</span></div>';
+    b.forEach(pos=>{const s=stopAt(pos);h+='<div class="bst"><div class="a">Parada '+(pos+1)+' · <b>'+esc(s.street)+', '+esc(s.number)+'</b>'+(s.pk.length>=10?' · <b>PONTO DE COLETA</b>':'')+'</div><div class="chips">'+s.pk.map((p,j)=>'<button class="sc '+(R.sep[pos+':'+j]?'on':'')+'" onclick="R.sep[\''+pos+':'+j+'\']=!R.sep[\''+pos+':'+j+'\'];save();renderSacolas()">'+esc(p.l)+'<small>…'+esc(p.t)+'</small></button>').join('')+'</div></div>'});
+    h+='</div>'});
+  h+='<button class="btn pri" onclick="go(\'entregar\')">3. Começar entregas →</button>';
+  $('main').innerHTML=h}
+function nextPending(from){const b=bagOf(from);const N=R.order.length;
+  for(let p=from+1;p<N&&bagOf(p)===b;p++)if(pending(p)&&!R.skip[p])return p;
+  for(let p=0;p<N;p++)if(bagOf(p)===b&&p!==from&&pending(p))return p;
+  for(let p=from+1;p<N;p++)if(pending(p))return p;
+  for(let p=0;p<N;p++)if(pending(p)&&p!==from)return p;return -1}
+function dist(a,c){const r=Math.PI/180,dl=(c.lat-a.lat)*r,dg=(c.lng-a.lng)*r;const h=Math.sin(dl/2)**2+Math.cos(a.lat*r)*Math.cos(c.lat*r)*Math.sin(dg/2)**2;return 6371000*2*Math.asin(Math.sqrt(h))}
+function renderEntregar(){
+  const {done,pk}=stats();
+  if(R.cur<0){setTop('Rota concluída',pk+' de '+R.total+' pacotes entregues');$('main').innerHTML='<div class="okb">Todas as paradas foram marcadas.</div><button class="btn sec" onclick="R.cur=R.order.length-1;save();render()">Voltar à última parada</button>';return}
+  const pos=R.cur,s=stopAt(pos),bi=bagOf(pos),[nm,col]=COLORS[bi%COLORS.length];
+  setTop('Parada '+(pos+1)+' de '+R.order.length,done+' paradas concluídas · '+pk+' de '+R.total+' pacotes entregues',col);
+  const m=R.marks[pos];const ll=s.nc?s.lat.toFixed(6)+','+s.lng.toFixed(6):null;
+  const q=encodeURIComponent(s.street+', '+s.number+', '+(s.bairro||'')+', Ipatinga - MG');
+  const waze=ll?'https://waze.com/ul?ll='+ll+'&navigate=yes':'https://waze.com/ul?q='+q+'&navigate=yes';
+  const gm='https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+(ll||q);
+  const n=nextPending(pos);
+  let h='<div class="card" style="--c:'+col+'"><span class="blk">SACOLA '+(bi+1)+' · '+nm+'</span>'+
+   '<div class="addr">'+esc(s.street)+', '+esc(s.number)+'</div><div class="bairro">'+esc(s.bairro||'')+' · Ipatinga</div>'+
+   (s.comp?'<div class="note">'+esc(s.comp)+'</div>':'')+(s.pk.length>=10?'<div class="coleta">PONTO DE COLETA · '+s.pk.length+' pacotes</div>':'')+
+   (m?'<div class="done" style="'+(m==='ok'?'':'background:#fde8e8;color:#c62828')+'">'+(m==='ok'?'✔ Já marcada como entregue':'✖ Não entregue: '+esc(m.slice(5)))+' <button class="btn sec" onclick="delete R.marks[R.cur];save();render()">Desfazer</button></div>':'')+
+   '<a class="btn waze" href="'+waze+'">➤ NAVEGAR NO WAZE</a>'+
+   '<div class="ph">Pacotes desta parada ('+s.pk.length+')</div><div class="labs">'+s.pk.map(p=>'<span class="lab">'+esc(p.l)+'<small>…'+esc(p.t)+'</small></span>').join('')+'</div>'+
+   '<button class="btn ok" onclick="act(\'ok\')">✔ ENTREGA CONCLUÍDA</button>'+
+   '<div class="row"><button class="btn bad" onclick="falha()">✖ Não entregue</button><button class="btn pul" onclick="R.skip[R.cur]=1;R.cur=nextPending(R.cur);save();render()">↷ Pular parada</button></div>'+
+   '<div class="row"><button class="btn sec" onclick="perto()">📍 Perto de mim</button><button class="btn sec" onclick="R.cur=Math.max(0,R.cur-1);save();render()">← Anterior</button></div>'+
+   '<a class="small" href="'+gm+'">Abrir no Google Maps</a>'+(ll?'<a class="small" href="https://waze.com/ul?q='+q+'&navigate=yes">Waze pelo endereço (se o ponto estiver errado)</a>':'')+'</div>';
+  if(n>=0&&n!==pos){const ns=stopAt(n),[nn2,nc]=COLORS[bagOf(n)%COLORS.length];h+='<div class="next" style="--nc:'+nc+'">Depois: <b>'+esc(ns.street)+', '+esc(ns.number)+'</b> · '+ns.pk.map(p=>p.l).join(' ')+' · sacola '+(bagOf(n)+1)+' '+nn2+'</div>'}
+  $('main').innerHTML=h;window.scrollTo(0,0)}
+function act(v){R.marks[R.cur]=v;delete R.skip[R.cur];R.cur=nextPending(R.cur);save();render()}
+function modal(html){$('mb').innerHTML=html;$('modal').classList.add('on')}
+function fecha(){$('modal').classList.remove('on')}
+$('modal').onclick=e=>{if(e.target.id==='modal')fecha()};
+function falha(){modal('<h3>Não entregue — motivo</h3>'+['Destinatário ausente','Endereço não encontrado','Recusado','Local fechado'].map(r=>'<button onclick="fecha();act(\'fail:'+r+'\')">'+r+'</button>').join('')+'<button onclick="fecha()">Cancelar</button>')}
+function perto(){
+  const show=(ref,label)=>{const list=R.order.map((i,p)=>({p,d:R.stops[i].nc?dist(ref,R.stops[i]):1e9})).filter(x=>pending(x.p)&&x.d<1e9).sort((a,b)=>a.d-b.d).slice(0,8);
+    modal('<h3>Mais perto '+label+'</h3>'+list.map(x=>{const s=stopAt(x.p),c=COLORS[bagOf(x.p)%COLORS.length][1];return '<button class="pc" style="--pc:'+c+'" onclick="R.cur='+x.p+';save();fecha();render()"><b>'+Math.round(x.d)+' m</b> · '+esc(s.street)+', '+esc(s.number)+' · '+s.pk.map(p=>p.l).join(' ')+' (sacola '+(bagOf(x.p)+1)+')</button>'}).join('')+'<button onclick="fecha()">Fechar</button>')};
+  const s=stopAt(R.cur);
+  if(navigator.geolocation){modal('<h3>Pegando sua localização…</h3>');navigator.geolocation.getCurrentPosition(q=>show({lat:q.coords.latitude,lng:q.coords.longitude},'de você (GPS)'),()=>show(s,'desta parada (GPS não autorizado)'),{enableHighAccuracy:true,timeout:10000})}
+  else show(s,'desta parada')}
+function go(v){view=v;render();window.scrollTo(0,0)}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+load();if(R)view='entregar';render();
+</script>
+</body>
+</html>
