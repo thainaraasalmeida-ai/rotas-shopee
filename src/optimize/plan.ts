@@ -1,4 +1,4 @@
-import { effectiveAddress, normalizeStreet } from '../domain/address';
+import { effectiveAddress, normalizeStreet, streetKey } from '../domain/address';
 import { groupColorKey } from '../domain/colors';
 import type { Group, RoutePlan, Stop } from '../domain/types';
 import type { TravelMatrix } from '../services/routing/types';
@@ -13,6 +13,8 @@ export interface PlanOptions {
   fromStart?: number[];
   /** Pontos de coleta: entram na sequência, mas não no corte dos grupos comuns. */
   exclude?: string[];
+  first?: string;
+  last?: string[];
 }
 
 /** Plano "como importado": mantém grupos e ordem do arquivo. Não é apresentado como otimizado. */
@@ -20,8 +22,7 @@ export function importedPlan(stops: Stop[], groups: Group[], groupCount: number,
   const order = stops.map((s) => s.id);
   let gs = groups;
   if (!gs.length) {
-    const all = stops;
-    stops = all.filter((s) => !exclude.includes(s.id)); // pontos de coleta não entram no corte dos grupos comuns
+    stops = stops.filter((s) => !exclude.includes(s.id)); // pontos de coleta não entram no corte dos grupos comuns
     // Sem grupos no arquivo: corta a ordem do arquivo equilibrando PACOTES (não paradas) e sem partir uma rua.
     const parts = splitIntoGroups({
       packages: stops.map((s) => s.packages.length),
@@ -46,7 +47,7 @@ export function importedPlan(stops: Stop[], groups: Group[], groupCount: number,
  * `located[i]` corresponde à linha/coluna i da matriz.
  */
 export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatrix, opts: PlanOptions): RoutePlan {
-  const street = located.map((s) => normalizeStreet(effectiveAddress(s).street));
+  const street = located.map(stop => streetKey(effectiveAddress(stop)) + '|' + (stop.dividerSide ?? ''));
   const side = located.map((s) => s.dividerSide);
   const idxOf = new Map(located.map((s, i) => [s.id, i]));
   const seeds: number[][] = [];
@@ -66,7 +67,11 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
     fromStart: opts.fromStart,
     seeds,
   });
-  const orderedLocated = res.order.map((i) => located[i]);
+  const preferFirst = res.order.filter(i => located[i].id === opts.first);
+  const remaining = res.order.filter(i => located[i].id !== opts.first);
+  const last = new Set(opts.last);
+  const orderIdx = [...preferFirst, ...remaining.filter(i => !last.has(located[i].id)), ...remaining.filter(i => last.has(located[i].id))];
+  const orderedLocated = orderIdx.map((i) => located[i]);
   const unlocated = stops.filter((s) => !idxOf.has(s.id));
   const order = [...orderedLocated.map((s) => s.id), ...unlocated.map((s) => s.id)];
 
@@ -78,8 +83,8 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
   for (let i = 0; i < posStops.length - 1; i++) {
     const a = idxOf.get(posStops[i].id), b = idxOf.get(posStops[i + 1].id);
     edgeSeconds.push(a !== undefined && b !== undefined ? matrix.durations[a][b] : 600);
-    sameStreet.push(normalizeStreet(effectiveAddress(posStops[i]).street) === normalizeStreet(effectiveAddress(posStops[i + 1]).street));
     const sa = posStops[i].dividerSide, sb = posStops[i + 1].dividerSide;
+    sameStreet.push(streetKey(effectiveAddress(posStops[i])) === streetKey(effectiveAddress(posStops[i + 1])) && !(sa && sb && sa !== sb));
     crossing.push(!!sa && !!sb && sa !== sb);
   }
   const parts = splitIntoGroups({ packages: posStops.map((s) => s.packages.length), edgeSeconds, sameStreet, crossing, k: opts.groupCount });
@@ -91,17 +96,24 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
   } else {
     notes.push('ATENÇÃO: sem acesso ao serviço de rotas, foi usada estimativa em linha reta. Esta ordem é APROXIMADA e não considera sentido das vias.');
   }
-  notes.push('Penalidades aplicadas: voltar a uma rua já iniciada e atravessar a avenida divisora.');
+  if (side.includes(1) && side.includes(-1)) {
+    const knownSides = orderedLocated.map(stop => stop.dividerSide).filter(Boolean);
+    const changes = knownSides.slice(1).filter((value, index) => value !== knownSides[index]).length;
+    notes.push(`Sequência estimada: ${changes} mudança(s) de lado entre paradas identificadas. Confira as travessias na navegação.`);
+  } else {
+    notes.push('O mapa não identificou entregas nos dois lados da avenida divisora. Confira as travessias no Waze.');
+  }
   if (unlocated.length) notes.push(`${unlocated.length} parada(s) sem localização ficaram no fim da rota. Corrija o endereço ou fixe a posição no mapa.`);
   const approx = located.filter((s) => s.geo && !s.geo.verified && s.geo.precision === 'rua').length;
   if (approx) notes.push(`${approx} parada(s) localizada(s) só pela rua (sem o número exato no mapa). A ordem dentro dessas ruas pode precisar de ajuste; fixe a posição pelo GPS na porta para melhorar as próximas rotas.`);
 
   return {
     method: matrix.method,
+    bagsByRoute: matrix.method === 'malha-viaria' && !unlocated.length,
     order,
     groups,
     createdAt: Date.now(),
-    totalSeconds: res.travelSeconds,
+    totalSeconds: travelTime(orderIdx, matrix.durations, opts.fromStart),
     importedSeconds,
     notes,
   };

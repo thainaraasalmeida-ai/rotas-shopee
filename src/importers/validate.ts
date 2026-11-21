@@ -8,6 +8,13 @@ export function validateImport(
 ): ImportIssue[] {
   const issues: ImportIssue[] = [];
   const totalPkgs = r.stops.reduce((s, st) => s + st.packages.length, 0);
+  const trackingSeen = new Set<string>();
+  for (const stop of r.stops) for (const pkg of stop.packages) {
+    const tracking = pkg.tracking?.trim().toUpperCase();
+    if (!tracking) continue;
+    if (trackingSeen.has(tracking)) issues.push({level: 'erro', message: `Rastreio repetido na importação: ${tracking}. Confira as linhas do arquivo.`});
+    trackingSeen.add(tracking);
+  }
 
   if (r.declared?.stops !== undefined && r.declared.stops !== r.stops.length) {
     issues.push({

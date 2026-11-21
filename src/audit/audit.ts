@@ -1,4 +1,4 @@
-import { effectiveAddress, formatAddress, normalizeStreet } from '../domain/address';
+import { effectiveAddress, formatAddress, streetKey } from '../domain/address';
 import type { Stop } from '../domain/types';
 import { haversineMeters } from '../services/routing/haversine';
 
@@ -17,12 +17,13 @@ const hasPending = (s: Stop) => s.packages.some((p) => p.status === 'pending');
  */
 export function auditLeaving(current: Stop, next: Stop | undefined, all: Stop[], dividerName?: string): AuditAlert[] {
   const alerts: AuditAlert[] = [];
-  const street = normalizeStreet(effectiveAddress(current).street);
-  const nextStreet = next ? normalizeStreet(effectiveAddress(next).street) : null;
+  const street = streetKey(effectiveAddress(current));
+  const nextStreet = next ? streetKey(effectiveAddress(next)) : null;
+  const otherSide = (stop: Stop) => !!current.dividerSide && !!stop.dividerSide && current.dividerSide !== stop.dividerSide;
 
   // 1) Saindo da rua com pacote pendente nela (inclui a própria parada, se foi pulada)
-  if (nextStreet !== street) {
-    const same = all.filter((s) => hasPending(s) && normalizeStreet(effectiveAddress(s).street) === street && s.id !== next?.id);
+  if (nextStreet !== street || (next && otherSide(next))) {
+    const same = all.filter((s) => hasPending(s) && streetKey(effectiveAddress(s)) === street && !otherSide(s) && s.id !== next?.id);
     if (same.length) {
       alerts.push({
         kind: 'mesma-rua',
@@ -51,7 +52,7 @@ export function auditLeaving(current: Stop, next: Stop | undefined, all: Stop[],
     const toNext = haversineMeters(current.geo, next.geo);
     if (toNext > 700) {
       const near = all.filter(
-        (s) => hasPending(s) && s.id !== next.id && s.geo && haversineMeters(current.geo!, s.geo) < 300 &&
+        (s) => hasPending(s) && s.id !== next.id && !otherSide(s) && s.geo && haversineMeters(current.geo!, s.geo) < 300 &&
           !alerts.some((a) => a.stopIds.includes(s.id)),
       );
       if (near.length) {

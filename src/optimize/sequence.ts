@@ -44,12 +44,17 @@ export function makeCost(inp: SequenceInput) {
   return (order: number[]) => {
     gen++;
     let c = fromStart && order.length ? fromStart[order[0]] : 0;
+    let lastSide: number | undefined;
     for (let i = 0; i < order.length; i++) {
       const o = order[i];
       if (i > 0) {
         const p = order[i - 1];
         c += d[p][o];
-        if (side) { const a = side[p], b = side[o]; if (a && b && a !== b) c += Q; }
+      }
+      const currentSide = side?.[o];
+      if (currentSide) {
+        if (lastSide && currentSide !== lastSide) c += Q;
+        lastSide = currentSide;
       }
       const s = st[o];
       if (i === 0 || st[order[i - 1]] !== s) {
@@ -138,6 +143,12 @@ export function solveSequence(inp: SequenceInput): SequenceResult {
   }
   const candidates = starts.map((s) => nearestNeighbor(n, inp.durations, s, inp.fromStart));
   for (const seed of inp.seeds ?? []) if (seed.length === n) candidates.push(seed);
+  if (inp.side?.includes(1) && inp.side.includes(-1)) {
+    const seed = candidates[0];
+    for (const firstSide of [1, -1]) {
+      candidates.push([...seed.filter(index => inp.side![index] === firstSide), ...seed.filter(index => !inp.side![index]), ...seed.filter(index => inp.side![index] === -firstSide)]);
+    }
+  }
   let best: number[] | null = null;
   let bestC = Infinity;
   for (const c of candidates) {

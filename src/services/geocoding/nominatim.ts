@@ -32,8 +32,15 @@ async function query(params: Record<string, string>, signal?: AbortSignal): Prom
 
 function pick(results: NomResult[], a: Address): GeoPoint | null {
   const want = normalizeStreet(a.street).replace(/^(rua|avenida) /, '');
-  const sameStreet = results.filter((r) => r.address?.road && normalizeStreet(r.address.road).includes(want));
-  const exact = sameStreet.find((r) => r.address?.house_number && r.address.house_number.replace(/\D/g, '') === a.number.replace(/\D/g, ''));
+  const sameStreet = results.filter(r => {
+    const addr = r.address;
+    if (!addr?.road || normalizeStreet(addr.road).replace(/^(rua|avenida) /,'') !== want) return false;
+    const city = addr.city || addr.town;
+    if (!city || normalizeStreet(city) !== normalizeStreet(a.city || DEFAULT_REGION.city)) return false;
+    const areas = [addr.suburb,addr.neighbourhood].filter((d): d is string => !!d);
+    return !a.district || !areas.length || areas.some(d => normalizeStreet(d) === normalizeStreet(a.district!));
+  });
+  const exact = sameStreet.find(r => r.address?.house_number && normalizeStreet(r.address.house_number) === normalizeStreet(a.number) && (!a.district || !!(r.address.suburb || r.address.neighbourhood)));
   const best = exact ?? sameStreet[0];
   if (!best) return null;
   return {

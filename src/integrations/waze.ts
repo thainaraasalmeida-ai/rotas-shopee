@@ -15,17 +15,20 @@ export interface WazeLink {
  */
 export function wazeLink(stop: Stop): WazeLink {
   const g = stop.geo;
-  if (g && g.precision !== 'rua' && g.precision !== 'aproximado') {
+  // Coordenada conferida (GPS/mapa) ou coordenada própria da Shopee para este endereço.
+  // Em 07/11 o endereço em texto levou o Waze ao lugar errado; por isso a coordenada da Shopee vem antes do texto.
+  // Coordenada repetida para números diferentes ('aproximado') ou só da rua continua indo por endereço.
+  if (g && (g.verified || g.precision === 'shopee') && Number.isFinite(g.lat) && Number.isFinite(g.lng) && Math.abs(g.lat) <= 90 && Math.abs(g.lng) <= 180 && (g.lat !== 0 || g.lng !== 0) && g.precision !== 'rua' && g.precision !== 'aproximado') {
     return {
       url: `https://waze.com/ul?ll=${g.lat.toFixed(6)},${g.lng.toFixed(6)}&navigate=yes`,
       mode: g.verified ? 'coordenada-verificada' : 'coordenada',
-      hint: 'Waze por coordenada',
+      hint: g.verified ? 'Waze pela posição conferida' : 'Waze pela coordenada da Shopee — confira o número na porta',
     };
   }
   return {
     url: `https://waze.com/ul?q=${encodeURIComponent(formatAddress(effectiveAddress(stop)))}&navigate=yes`,
     mode: 'endereco',
-    hint: 'Waze pelo endereço',
+    hint: 'Confira rua, número e bairro no Waze antes de iniciar.',
   };
 }
 

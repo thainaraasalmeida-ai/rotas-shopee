@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { solveSequence, travelTime } from '../src/optimize/sequence';
+import { makeCost, solveSequence, travelTime } from '../src/optimize/sequence';
 import { splitIntoGroups } from '../src/optimize/groups';
 import { auditLeaving } from '../src/audit/audit';
 import type { Stop } from '../src/domain/types';
@@ -11,6 +11,18 @@ function grid(n: number) {
 }
 
 describe('sequenciamento', () => {
+  it('conta a mudança de lado mesmo com uma parada sobre a avenida', () => {
+    const durations = Array.from({ length: 5 }, () => Array(5).fill(0));
+    const cost = makeCost({ durations, street: Array(5).fill('a'), side: [1, undefined, -1, undefined, 1], crossingPenalty: 90 });
+    expect(cost([0, 1, 2, 3, 4])).toBe(180);
+    expect(cost([0, 4, 1, 3, 2])).toBe(90);
+  });
+  it('prefere terminar um lado quando tempos de carro são equivalentes', () => {
+    const durations = Array.from({ length: 6 }, (_, start) => Array.from({ length: 6 }, (_, end) => start === end ? 0 : 45));
+    const side = [1, -1, 1, -1, 1, -1];
+    const { order } = solveSequence({ durations, side, street: Array(6).fill('rua'), fromStart: [0, 600, 600, 600, 600, 600] });
+    expect(order.map(index => side[index])).toEqual([1, 1, 1, -1, -1, -1]);
+  });
   it('respeita assimetria (mão única)', () => {
     const d = grid(8);
     const shuffled = [5, 2, 7, 0, 3, 6, 1, 4];
@@ -69,6 +81,14 @@ describe('auditoria', () => {
     const c = mk('3', 'Rua C', 'pending', -1);
     const al = auditLeaving(a, c, [a, b, c], 'Av. Fernando de Noronha');
     expect(al.some((x) => x.kind === 'antes-de-atravessar')).toBe(true);
+  });
+  it('confere o trecho onde o motorista está mesmo que a rua continue do outro lado', () => {
+    const current = mk('1', 'Rua A', 'delivered', 1);
+    const sameBlock = mk('2', 'Rua A', 'pending', 1);
+    const next = mk('3', 'Rua A', 'pending', -1);
+    const farBlock = mk('4', 'Rua A', 'pending', -1);
+    const alerts = auditLeaving(current, next, [current, sameBlock, next, farBlock]);
+    expect(alerts.flatMap(alert => alert.stopIds)).toEqual([sameBlock.id]);
   });
   it('não marca nada como entregue', () => {
     const a = mk('1', 'Rua A');

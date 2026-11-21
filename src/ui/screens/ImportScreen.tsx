@@ -4,6 +4,7 @@ import { itemsToLines, parseRouteLines } from '../../importers/pdfRoute';
 import { FIELD_LABEL, parseSheetRows, readSheetFile, type Field, type Mapping } from '../../importers/spreadsheet';
 import { useStore } from '../../store/store';
 import { Modal } from '../components/common';
+import { Icon } from '../components/Icon';
 
 type SheetState = { rows: unknown[][]; headerRow: number; mapping: Mapping; headers: string[]; fileName: string };
 
@@ -50,7 +51,7 @@ export function ImportScreen({ onDone }: { onDone: () => void }) {
 
   const accept = () => {
     if (!result) return;
-    const started = session && Object.values(session.stops).some((s) => s.packages.some((p) => p.status !== 'pending'));
+    const started = session && (session.carLoad || Object.values(session.stops).some((s) => s.packages.some((p) => p.status !== 'pending' || p.shopeeClosed || p.separated)));
     if (started && !confirmReplace) { setConfirmReplace(true); return; }
     loadImport(result);
     setConfirmReplace(false);
@@ -63,12 +64,21 @@ export function ImportScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="screen">
-      <h2>Importar rota</h2>
-      <p className="muted">Planilha exportada da Shopee (.xlsx, .xls, .csv) ou PDF de rota já organizada.</p>
-      <label className="file">
+      <section className="route-cover">
+        <div><h2>Carregar rota</h2><p>Comece pelo arquivo de entregas que recebeu da Shopee.</p></div>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+      </section>
+      <label className="file file-drop">
         <input type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
-        <span>📂 Escolher arquivo</span>
+        <i className="upload-symbol"><Icon name="upload" size={24}/></i>
+        <strong>Escolher arquivo</strong><small>Planilha Excel, CSV ou rota em PDF</small><i className="file-arrow"><Icon name="arrow" size={19}/></i>
       </label>
+      {!result && !busy && !session && <section className="first-guide">
+        <h3>Depois de importar</h3>
+        <div><Icon name="map"/><section><b>Confira o trajeto</b><small>Veja a sequência e o tempo estimado ao volante.</small></section></div>
+        <div><Icon name="bag"/><section><b>Carregue o carro na ordem da rota</b><small>Veja qual sacola vai no fundo e qual fica perto da abertura.</small></section></div>
+        <div><Icon name="scan"/><section><b>Confira na porta</b><small>Leia o código e confirme a entrega física.</small></section></div>
+      </section>}
       {busy ? <div className="info">{busy}</div> : null}
       {error ? <div className="err">{error}</div> : null}
 
@@ -105,12 +115,16 @@ export function ImportScreen({ onDone }: { onDone: () => void }) {
               {result.issues.map((i, k) => <div key={k} className={i.level === 'erro' ? 'err' : i.level === 'aviso' ? 'warn' : 'info'}>{i.message}</div>)}
             </div>
           ) : <div className="ok">Nenhuma inconsistência encontrada.</div>}
-          <button className="btn primary big" disabled={!result.stops.length} onClick={accept}>Usar esta rota</button>
+          <button className="btn primary big" disabled={!result.stops.length || result.issues.some(i => i.level === 'erro')} onClick={accept}>Usar esta rota</button>
+          {session?.source === 'pdf' && result.source === 'planilha' && <button className="btn" disabled={result.issues.some(i => i.level === 'erro')} onClick={() => {
+            try { useStore.getState().linkManifest(result); onDone(); }
+            catch(e) { setError((e as Error).message); }
+          }}>Adicionar rastreios à rota do PDF e manter sacolas e progresso</button>}
         </div>
       ) : null}
 
       <Modal open={confirmReplace} title="Substituir rota atual?" onClose={() => setConfirmReplace(false)}>
-        <p>A rota atual já tem entregas marcadas. Ao importar, o progresso dela deixa de aparecer.</p>
+        <p>Esta rota já tem progresso salvo. Ao substituir, você passa a trabalhar com o novo arquivo.</p>
         <div className="row">
           <button className="btn danger" onClick={accept}>Substituir</button>
           <button className="btn" onClick={() => setConfirmReplace(false)}>Cancelar</button>

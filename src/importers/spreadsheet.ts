@@ -1,4 +1,4 @@
-import { addressKey, DEFAULT_REGION, inferPropertyType, normalizeStreet, splitStreetNumber, stripAccents } from '../domain/address';
+import { streetKey, DEFAULT_REGION, inferPropertyType, normalizeStreet, splitStreetNumber, stripAccents } from '../domain/address';
 import { parseLabelTokens, tokensToPackages } from '../domain/packages';
 import type { ImportResult, Package, Stop } from '../domain/types';
 import { validateImport } from './validate';
@@ -98,6 +98,7 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
   const { headerRow, mapping } = override ?? detectHeader(rows);
   const headers = (rows[headerRow] ?? []).map((h) => String(h ?? ''));
   const byKey = new Map<string, Stop>();
+  const byManifestStop = new Map<string, Stop[]>();
   const stops: Stop[] = [];
   const issues: ImportResult['issues'] = [];
   const noSeq: string[] = [];
@@ -110,7 +111,10 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
     const row = rows[r];
     if (!row || row.every((c) => String(c ?? '').trim() === '')) continue;
     const addrCell = cell(row, mapping.address);
-    if (!addrCell) continue;
+    if (!addrCell) {
+      if (mapping.address !== undefined) issues.push({ level: 'erro', message: `Linha ${r + 1} sem endereço. Confira o arquivo antes de iniciar.` });
+      continue;
+    }
 
     let street: string, number: string, compFromAddr = '', zip = cell(row, mapping.zip) || undefined;
     if (mapping.number !== undefined && cell(row, mapping.number)) {
@@ -134,17 +138,32 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
       zip,
       raw: addrCell,
     };
-    const key = addressKey(address);
+    const key = [streetKey(address), norm(address.district), norm(number) || `linha-${r}`].join('|');
+    const manifestStop = cell(row, mapping.stop);
+    const manifestKey = manifestStop && number && [manifestStop, streetKey(address), norm(number)].join('|');
+    const lat = parseFloat(cell(row, mapping.lat).replace(',', '.'));
+    const lng = parseFloat(cell(row, mapping.lng).replace(',', '.'));
+    const hasGeo = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0);
     let stop = byKey.get(key);
+    if (!stop && manifestKey && hasGeo) {
+      const nearby = (byManifestStop.get(manifestKey) ?? []).filter(st => st.geo && Math.hypot((st.geo.lat-lat)*111320,(st.geo.lng-lng)*111320*Math.cos(lat*Math.PI/180)) <= 20);
+      if (nearby.length === 1) {
+        stop = nearby[0];
+        const msg = `A parada ${manifestStop} tem o mesmo número de imóvel e bairros diferentes na planilha (${stop.original.district} / ${address.district}). Confira a entrada de cada pacote.`;
+        stop.flags.push(msg);
+        issues.push({ level: 'aviso', message: msg });
+      }
+    }
     if (!stop) {
       const id = `p${stops.length + 1}`;
       stop = {
         id, original: address, complement: '', notes: '', propertyType: 'desconhecido', propertyTypeSource: 'nenhum',
         packages: [], flags: [],
       };
-      byKey.set(key, stop);
       stops.push(stop);
     }
+    byKey.set(key, stop);
+    if (manifestKey && !byManifestStop.get(manifestKey)?.includes(stop)) byManifestStop.set(manifestKey,[...(byManifestStop.get(manifestKey) ?? []),stop]);
     // Pacotes desta linha
     const labelCell = cell(row, mapping.label);
     const tracking = cell(row, mapping.tracking);
@@ -158,7 +177,7 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
       pkgs = tokensToPackages([{ kind: 'extra', value: 1 }], `${stop.id}-r${r}`);
       noSeq.push(tracking || `linha ${r + 1}`);
     } else pkgs = [{ id: `${stop.id}-r${r}`, label: tracking || labelCell || `Linha ${r + 1}`, number: null, extra: false, status: 'pending' }];
-    pkgs.forEach((p) => { p.tracking = tracking || undefined; p.complement = complement || undefined; });
+    pkgs.forEach((p) => { p.tracking = tracking || undefined; p.complement = complement || undefined; p.manifestAddress = address; });
 
     const qty = parseInt(cell(row, mapping.qty), 10);
     if (qty > pkgs.length) {
@@ -170,9 +189,7 @@ export function parseSheetRows(rows: unknown[][], fileName: string, override?: {
     if (complement && !stop.complement.split(' · ').includes(complement)) stop.complement = [stop.complement, complement].filter(Boolean).join(' · ');
     if (notes && !stop.notes.includes(notes)) stop.notes = [stop.notes, notes].filter(Boolean).join(' · ');
 
-    const lat = parseFloat(cell(row, mapping.lat).replace(',', '.'));
-    const lng = parseFloat(cell(row, mapping.lng).replace(',', '.'));
-    if (!stop.geo && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.1) {
+    if (!stop.geo && hasGeo) {
       stop.geo = { lat, lng, precision: 'shopee', verified: false, source: 'Planilha Shopee' };
     }
   }

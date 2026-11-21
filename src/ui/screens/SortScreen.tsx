@@ -3,11 +3,27 @@ import { effectiveAddress, formatAddress } from '../../domain/address';
 import { colorOf } from '../../domain/colors';
 import type { Group, Stop } from '../../domain/types';
 import { checkIntegrity } from '../../optimize/special';
-import { collectionSuggestions, useStore } from '../../store/store';
+import { canPrepareBags, collectionSuggestions, useStore } from '../../store/store';
 import { Chips, MethodBanner, Modal } from '../components/common';
+import { CarLoading } from '../components/CarLoading';
 
 /** Separação dos pacotes por grupo (cor + número), pontos de coleta e busca por etiqueta. */
 export function SortScreen() {
+  const session=useStore(s=>s.session)!;
+  const [mode,setMode]=useState<'car'|'search'>('car');
+  if (!canPrepareBags(session)) return <div className="screen stack"><h2>Carregar o carro</h2>
+    <p>Calcule o trajeto pelas ruas para saber quais pacotes vão juntos e qual sacola fica na abertura.</p>
+    {session.carLoad && <p className="info">O carregamento anterior continua salvo. Em Entregar você pode consultar a sacola onde guardou cada pacote.</p>}
+    <a className="btn primary big" href="#rota">Preparar trajeto</a>
+  </div>;
+  return <div className="screen loading-screen"><h2>Carregar o carro</h2>
+    <div className="load-switch"><button aria-pressed={mode==='car'} onClick={()=>setMode('car')}>Ordem de carga</button>
+      <button aria-pressed={mode==='search'} onClick={()=>setMode('search')}>Buscar pacote</button></div>
+    {mode==='car'?<CarLoading session={session}/>:<BagsList/>}
+  </div>;
+}
+
+function BagsList() {
   const session = useStore((s) => s.session)!;
   const learned = useStore((s) => s.learnedCollectionPoints);
   const threshold = useStore((s) => s.settings.collectionThreshold);
@@ -45,8 +61,7 @@ export function SortScreen() {
 
   return (
     <div className="screen">
-      <MethodBanner method={session.plan.method} stale={session.plan.stale} />
-      <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar pacote: 94, #94 ou +1" inputMode="search" autoComplete="off" />
+      <input className="search" aria-label="Buscar pacote" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar etiqueta ou rastreio" inputMode="search" autoComplete="off" />
       {query ? (
         hits.length ? (
           hits.map((h) => {
@@ -91,7 +106,7 @@ export function SortScreen() {
         return (
           <section key={g.index} className="group" style={{ borderColor: c.bg }}>
             <button className="group-head" style={{ background: c.bg, color: c.fg }} onClick={() => setOpen(open === g.index ? null : g.index)}>
-              <span>GRUPO {g.index} — {c.name.toUpperCase()}</span>
+              <span>Sacola {g.index} · {c.name}</span>
               <small>{g.name && session.plan.method === 'importado' ? g.name + ' · ' : ''}{pk} pacotes · {stops.length} paradas</small>
             </button>
             <div className="group-body">
@@ -113,6 +128,7 @@ export function SortScreen() {
       {special.map((g) => <SpecialGroupCard key={g.index} group={g} stop={session.stops[g.stopIds[0]]} position={session.plan.order.indexOf(g.stopIds[0]) + 1} total={session.plan.order.length} threshold={threshold} />)}
 
       <div className="muted small">Toque no grupo para ver os endereços. Em cada endereço, "Ponto de coleta" cria um grupo exclusivo para ele.</div>
+      <MethodBanner method={session.plan.method} stale={session.plan.stale} />
 
       <Modal open={!!confirmMark} title="Criar grupo de ponto de coleta?" onClose={() => setConfirmMark(null)}>
         {confirmMark ? (
@@ -144,7 +160,7 @@ function SpecialGroupCard({ group, stop, position, total, threshold }: { group: 
       <div className="group-body stack">
         <div className="addr" style={{ fontSize: 18 }}>{formatAddress(effectiveAddress(stop), false)}</div>
         {stop.complement || stop.notes ? <div className="muted small">{[stop.complement, stop.notes].filter(Boolean).join(' · ')}</div> : null}
-        <div className="muted small">Na rota: parada {position} de {total} (mantida na posição mais eficiente).</div>
+        <div className="muted small">Parada {position} de {total} na sequência atual.</div>
         <div className={done ? 'ok' : 'info'}>
           <b>{sep} de {all} separados</b>{done ? ' — conferência completa ✔' : ` — faltam ${all - sep}`}
         </div>

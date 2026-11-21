@@ -1,6 +1,6 @@
 import type { Address, PropertyType, Stop } from './types';
 
-export const DEFAULT_REGION = { district: 'Bom Retiro', city: 'Ipatinga', state: 'MG' };
+export const DEFAULT_REGION = { district: '', city: 'Ipatinga', state: 'MG' };
 
 export function stripAccents(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -22,7 +22,11 @@ export function normalizeStreet(street: string): string {
 }
 
 export function addressKey(a: Address): string {
-  return `${normalizeStreet(a.street)}|${a.number.replace(/\D/g, '') || a.number.trim().toLowerCase()}`;
+  return [a.state || DEFAULT_REGION.state, a.city || DEFAULT_REGION.city, a.district ?? '', a.street, a.number].map(normalizeStreet).join('|');
+}
+
+export function streetKey(a: Address): string {
+  return [a.state || DEFAULT_REGION.state, a.city || DEFAULT_REGION.city, a.street].map(normalizeStreet).join('|');
 }
 
 export function effectiveAddress(stop: Stop): Address {

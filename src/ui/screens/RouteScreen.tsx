@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { effectiveAddress, formatAddress } from '../../domain/address';
 import { colorOf, groupColorKey } from '../../domain/colors';
 import { importedPlan } from '../../optimize/plan';
@@ -16,6 +16,13 @@ export function RouteScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const [guard, setGuard] = useState(false);
+  const [position,setPosition] = useState<GeolocationPosition>();
+  const [gpsMessage,setGpsMessage] = useState('');
+  useEffect(() => {
+    if (!settings.useGpsStart || !navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(p => {setPosition(p);setGpsMessage('');},() => setGpsMessage('GPS sem sinal ou permissão.'),{enableHighAccuracy:true,maximumAge:10000,timeout:12000});
+    return () => navigator.geolocation.clearWatch(id);
+  },[settings.useGpsStart]);
   const fixedOrder = s.source === 'pdf' && s.plan.method === 'importado';
 
   const stops = orderedStops(s);
@@ -38,7 +45,7 @@ export function RouteScreen() {
       } else {
         let start: { lat: number; lng: number } | undefined;
         if (settings.useGpsStart) {
-          start = await new Promise((res) => navigator.geolocation?.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res(undefined), { timeout: 10000 }));
+          start = navigator.geolocation ? await new Promise((res) => navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res(undefined), { timeout: 10000 })) : undefined;
           say(start ? 'info' : 'warn', start ? 'Partida: sua localização atual.' : 'GPS indisponível; a rota começa pela parada mais conveniente.');
         }
         try {
@@ -47,8 +54,7 @@ export function RouteScreen() {
         } catch (e) {
           say('warn', `Não consegui buscar a avenida divisora (${(e as Error).message}). A rota segue sem essa penalidade.`);
         }
-        const { plan, warning } = await optimizeRoute(setProgress, ac.signal, start);
-        if (warning) say('err', warning);
+        const { plan } = await optimizeRoute(setProgress, ac.signal, start);
         say(plan.method === 'malha-viaria' ? 'ok' : 'warn', `Rota pronta: ${plan.groups.length} grupos, deslocamento estimado ${fmtMin(plan.totalSeconds)}${plan.importedSeconds ? ` (ordem do arquivo: ${fmtMin(plan.importedSeconds)})` : ''}.`);
       }
     } catch (e) {
@@ -59,8 +65,8 @@ export function RouteScreen() {
   };
 
   const markers: MapMarker[] = useMemo(
-    () =>
-      stops.filter((x) => x.geo).map((x) => {
+    () => {
+      const pins: MapMarker[] = stops.filter((x) => x.geo).map((x) => {
         const g = groupOfStop(s, x.id);
         return {
           id: x.id,
@@ -71,15 +77,19 @@ export function RouteScreen() {
           dashed: !x.geo!.verified && x.geo!.precision === 'rua',
           popup: `${x.packages.map((p) => p.label).join(' ')} · ${formatAddress(effectiveAddress(x), false)}`,
         };
-      }),
+      });
+      if (settings.useGpsStart && position && !gpsMessage) pins.push({id:'gps',lat:position.coords.latitude,lng:position.coords.longitude,color:'#1467a6',text:'GPS',popup:'Sua posição atual'});
+      return pins;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [s.plan, s.stops],
+    [s.plan, s.stops,settings.useGpsStart,position,gpsMessage],
   );
-  const path = useMemo(() => markers.map((m) => [m.lat, m.lng] as [number, number]), [markers]);
+  const path = useMemo(() => markers.filter(m => m.id !== 'gps').map((m) => [m.lat, m.lng] as [number, number]), [markers]);
   const divider = useMemo(() => dividerCache?.lines.map((l) => l.map((p) => [p.lat, p.lng] as [number, number])), [s.plan]);
 
   return (
     <div className="screen">
+      <h2>Seu trajeto</h2>
       <MethodBanner method={s.plan.method} stale={s.plan.stale} />
       <div className="stats">
         <div><big>{located.length}/{stops.length}</big>localizadas</div>
@@ -90,11 +100,16 @@ export function RouteScreen() {
       {s.plan.importedSeconds && s.plan.totalSeconds ? (
         <div className="info">Mesma matriz de tempos: ordem do arquivo {fmtMin(s.plan.importedSeconds)} × otimizada {fmtMin(s.plan.totalSeconds)}.</div>
       ) : null}
+      {s.plan.method === 'malha-viaria' && !s.plan.stale && s.plan.totalSeconds !== undefined && stops.every(st => st.packages.every(pkg => pkg.status === 'pending')) && <div className="box">
+        <b>Seu limite de 4 horas</b>
+        <p>Com {fmtMin(s.plan.totalSeconds)} ao volante e 20 min reservados para imprevistos, {s.plan.totalSeconds < 220*60 ? `sobram em média ${((220-s.plan.totalSeconds/60)/stops.length).toLocaleString('pt-BR',{maximumFractionDigits:1})} min por parada para estacionar, achar os volumes e entregar.` : 'a direção já ocupa o tempo disponível.'}</p>
+        <div className="small muted">Simulação antes da saída. Uma coleta grande usa parte dessa margem de atendimento. Some o trajeto até a primeira parada se calculou sem GPS, e a volta se fizer parte do seu turno.</div>
+      </div>}
 
       <div className="stack">
         <button className="btn primary big" disabled={!!progress} onClick={() => run('geo')}>1. Localizar endereços {missing.length ? `(${missing.length})` : '✔'}</button>
         <button className="btn primary big" disabled={!!progress || located.length < 2} onClick={() => (fixedOrder ? setGuard(true) : run('opt'))}>2. Otimizar pela malha viária</button>
-        {fixedOrder ? <div className="warn small">Esta rota segue a ordem e os grupos do PDF importado. Otimizar mudaria a ordem e os grupos — não use se os pacotes já estão separados no carro.</div> : null}
+        {fixedOrder ? <div className="info small">Recalcular reorganiza as paradas pendentes e mantém os grupos de separação do PDF.</div> : null}
         {progress ? (
           <div className="info">
             {progress.step}{progress.total > 1 ? ` — ${progress.done}/${progress.total}` : '…'}
@@ -126,7 +141,8 @@ export function RouteScreen() {
         </button>
       </details>
 
-      {markers.length ? <MapView markers={markers} path={path} divider={divider} onMarkerClick={setEditing} /> : <div className="muted">O mapa aparece depois de localizar os endereços.</div>}
+      {markers.length ? <MapView markers={markers} path={path} divider={divider} onMarkerClick={id => {if (id !== 'gps') setEditing(id);}} /> : <div className="muted">O mapa aparece depois de localizar os endereços.</div>}
+      {settings.useGpsStart && <div className="small muted">{gpsMessage || (position ? `GPS atualizado às ${new Date(position.timestamp).toLocaleTimeString('pt-BR')} · precisão ±${Math.round(position.coords.accuracy)} m` : 'Aguardando posição do iPhone…')}</div>}
       <div className="muted small">Marcador tracejado = localizado só pela rua. Toque para corrigir ou marcar a posição exata.</div>
 
       {located.length && (missing.length || streetOnly.length) ? (
@@ -144,7 +160,7 @@ export function RouteScreen() {
         <div className="modal-bg" onClick={() => setGuard(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Mudar a ordem do PDF?</h3>
-            <p>Os grupos e a sequência do arquivo serão substituídos. Se os pacotes já estão separados no carro pelos grupos do PDF, cancele.</p>
+            <p>Recalcular a sequência das entregas pendentes? Cada pacote continua no grupo do PDF.</p>
             <div className="row"><button className="btn" onClick={() => setGuard(false)}>Cancelar (manter ordem do PDF)</button><button className="btn danger" onClick={() => { setGuard(false); run('opt'); }}>Otimizar mesmo assim</button></div>
           </div>
         </div>

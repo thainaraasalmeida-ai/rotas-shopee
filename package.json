@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/offline.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@zxing/browser": "0.1.5",
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^6.5.438",
     "react": "^19.3.1",

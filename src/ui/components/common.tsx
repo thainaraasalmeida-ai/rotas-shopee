@@ -37,7 +37,7 @@ export function Chips({ packages, color, onlyPending, highlight }: { packages: P
 export const METHOD_INFO: Record<RouteMethod, { label: string; cls: string; text: string }> = {
   importado: { label: 'Ordem do arquivo', cls: 'm-imp', text: 'Grupos e sequência como vieram do arquivo. Ainda não otimizada.' },
   'linha-reta': { label: 'Aproximada (linha reta)', cls: 'm-aprox', text: 'Sem dados de vias: NÃO considera mão única nem conversões.' },
-  'malha-viaria': { label: 'Otimizada pela malha viária', cls: 'm-ok', text: 'Tempos de carro reais pelas ruas, respeitando sentido das vias.' },
+  'malha-viaria': { label: 'Otimizada pela malha viária', cls: 'm-ok', text: 'Tempos estimados de carro, com os sentidos de circulação cadastrados no mapa.' },
 };
 
 export function MethodBanner({ method, stale }: { method: RouteMethod; stale?: boolean }) {

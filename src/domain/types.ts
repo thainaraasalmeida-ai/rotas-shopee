@@ -1,7 +1,7 @@
 // Modelo de domínio. Independente de UI e de armazenamento,
 // para permitir trocar localStorage por banco de dados no futuro.
 
-export type PackageStatus = 'pending' | 'delivered' | 'failed';
+export type PackageStatus = 'pending' | 'delivered' | 'failed' | 'rescheduled';
 
 export interface Package {
   id: string;
@@ -13,9 +13,13 @@ export interface Package {
   extra: boolean;
   /** Código de rastreio (planilha), quando disponível. */
   tracking?: string;
+  trackingSuffix?: string;
+  manifestAddress?: Address;
+  rescheduledFor?: string;
   /** Complemento específico deste pacote (planilha). */
   complement?: string;
   status: PackageStatus;
+  shopeeClosed?: boolean;
   /** Conferência física na separação (não tem relação com entrega). */
   separated?: boolean;
   failReason?: string;
@@ -83,6 +87,8 @@ export type RouteMethod = 'importado' | 'linha-reta' | 'malha-viaria';
 
 export interface RoutePlan {
   method: RouteMethod;
+  /** A divisão física foi feita sobre a sequência de carro calculada. */
+  bagsByRoute?: boolean;
   /** Ordem global das paradas. Os grupos são fatias contíguas desta ordem. */
   order: string[];
   groups: Group[];
@@ -114,7 +120,8 @@ export interface ImportResult {
 
 export interface AuditEntry {
   at: number;
-  kind: 'saiu-com-pendencia' | 'atravessou-com-pendencia' | 'nao-entregue' | 'pulou' | 'correcao';
+  kind: 'saiu-com-pendencia' | 'atravessou-com-pendencia' | 'nao-entregue' | 'pulou' | 'correcao' | 'pacote' | 'baixa' | 'desvio' | 'recalculo';
+  packageId?: string;
   stopId: string;
   justification: string;
   pendingStopIds: string[];

@@ -5,9 +5,13 @@ import { colorOf } from '../../domain/colors';
 import type { Stop } from '../../domain/types';
 import { shortLabel } from '../../domain/packages';
 import { googleMapsLink, wazeLink } from '../../integrations/waze';
-import { currentStopId, groupOfStop, isPending, nextStopId, orderedStops, useStore } from '../../store/store';
-import { Chips, GroupBadge, MethodBanner, Modal } from '../components/common';
+import { currentStopId, plannedStopId, groupOfStop, isPending, nextStopId, orderedStops, pendingVisits, useStore } from '../../store/store';
+import '../shosho/shosho.css';
+import { Chips, Modal } from '../components/common';
 import { geoText, StopEditor } from '../components/StopEditor';
+import { LabelCheck } from '../components/LabelCheck';
+import { optimizeRoute } from '../../services/pipeline';
+import { cargoPosition } from '../../optimize/loading';
 
 const FAIL_REASONS = ['Destinatário ausente', 'Endereço não encontrado', 'Recusado', 'Local fechado', 'Acesso impedido'];
 
@@ -17,41 +21,57 @@ export function DeliveryScreen() {
   const curId = currentStopId(session);
   const cur = curId ? session.stops[curId] : undefined;
   const [selected, setSelected] = useState<string[]>([]);
+  const [mismatchAt, setMismatchAt] = useState<string>();
   const [failOpen, setFailOpen] = useState(false);
   const [failReason, setFailReason] = useState('');
+  const [date, setDate] = useState('');
+  const [planning, setPlanning] = useState(false);
+  const [planMessage, setPlanMessage] = useState('');
   const [alerts, setAlerts] = useState<{ list: AuditAlert[]; from: string; next?: string } | null>(null);
   const [justification, setJustification] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+  const [seqOpen, setSeqOpen] = useState(false);
 
   const all = orderedStops(session);
   const totalPk = all.reduce((s, x) => s + x.packages.length, 0);
   const donePk = all.reduce((s, x) => s + x.packages.filter((p) => p.status !== 'pending').length, 0);
-  const doneStops = all.filter((s) => !isPending(s)).length;
 
   /** Depois de agir sobre a parada atual: audita a saída e avança (ou fica, se ainda há pendência parcial). */
   const advance = (fromId: string, skipping = false) => {
     const s = useStore.getState().session!;
     const from = s.stops[fromId];
     if (!skipping && isPending(from)) { setSelected([]); return; } // entrega parcial: continua aqui
+    if (s.detour?.stopId === fromId) { setSelected([]); store.endDetour(); window.scrollTo({ top: 0 }); return; } // volta para a parada planejada
     const next = nextStopId(s, fromId);
     const list = auditLeaving(from, next ? s.stops[next] : undefined, Object.values(s.stops), s ? useStore.getState().settings.dividerName : undefined);
     setSelected([]);
-    if (list.length) { setAlerts({ list, from: fromId, next }); setJustification(''); return; }
+    if (list.length) { store.setCursor(fromId); setAlerts({ list, from: fromId, next }); setJustification(''); return; }
     store.setCursor(next);
     window.scrollTo({ top: 0 });
   };
 
   const pendingIds = (st: Stop) => st.packages.filter((p) => p.status === 'pending').map((p) => p.id);
-  const target = (st: Stop) => (selected.length ? selected : pendingIds(st));
+  const goTo = (next?: string) => {
+    if (!cur || cur.id === next) return;
+    setSelected([]);
+    const list = auditLeaving(cur, next ? session.stops[next] : undefined, all, store.settings.dividerName);
+    if (list.length) { store.setCursor(cur.id); setAlerts({ from: cur.id, next, list }); setJustification(''); }
+    else store.setCursor(next);
+  };
+  const target = (st: Stop) => {
+    const pending = pendingIds(st);
+    if (mismatchAt === st.id) return [];
+    return pending.length === 1 && st.packages.length === 1 ? pending : pending.filter(id => selected.includes(id));
+  };
 
   const onDelivered = () => {
-    if (!cur) return;
+    if (!cur || !target(cur).length) return;
     store.setPackagesStatus(cur.id, 'delivered', { packageIds: target(cur) });
     store.markSkipped(cur.id, false);
     advance(cur.id);
   };
   const onFailed = () => {
-    if (!cur || !failReason.trim()) return;
+    if (!cur || !target(cur).length || !failReason.trim()) return;
     store.setPackagesStatus(cur.id, 'failed', { packageIds: target(cur), reason: failReason.trim() });
     store.addAudit({ at: Date.now(), kind: 'nao-entregue', stopId: cur.id, justification: failReason.trim(), pendingStopIds: [] });
     store.markSkipped(cur.id, false);
@@ -94,104 +114,160 @@ export function DeliveryScreen() {
   }
 
   const group = groupOfStop(session, cur.id);
-  const c = group ? colorOf(group.colorKey) : undefined;
   const addr = effectiveAddress(cur);
   const waze = wazeLink(cur);
   const pos = session.plan.order.indexOf(cur.id) + 1;
   const doneHere = !isPending(cur);
   const threshold = store.settings.collectionThreshold;
   const isCollection = !!group?.special || cur.packages.length >= threshold;
-  const upcoming: string[] = [];
-  let probe: string | undefined = cur.id;
-  for (let i = 0; i < 4; i++) {
-    probe = nextStopId({ ...session, skipped: [...session.skipped] }, probe);
-    if (!probe || probe === cur.id || upcoming.includes(probe)) break;
-    upcoming.push(probe);
-  }
+
+  // Sacola física: a registrada em "Carreguei o carro"; antes disso, a do plano.
+  const bagOf = (id: string) => {
+    const i = session.carLoad?.findIndex(b => b.stopIds.includes(id)) ?? -1;
+    if (i >= 0) return { index: session.carLoad![i].index, colorKey: session.carLoad![i].colorKey };
+    const g = groupOfStop(session, id);
+    return g ? { index: g.index, colorKey: g.colorKey, special: g.special } : undefined;
+  };
+  const bag = bagOf(cur.id);
+  const bagColor = bag ? colorOf(bag.colorKey) : undefined;
+  const visits = pendingVisits(session);
+  const next2 = visits.filter(id => id !== cur.id).slice(0, 2);
+  const pend = cur.packages.filter(p => p.status === 'pending');
+  const street = (st: Stop) => { const x = effectiveAddress(st); return x.number ? `${x.street}, ${x.number}` : x.street; };
+  const BagMini = ({ id }: { id: string }) => { const b = bagOf(id); return b ? <span className="ss-bag" style={{ fontSize: 13, fontWeight: 700 }}><span className="ss-sw sm" style={{ ['--bc' as string]: colorOf(b.colorKey).bg }} />Sacola {b.index}</span> : null; };
 
   return (
-    <div className="screen">
-      <h2 className="stop-count">Parada {pos} de {all.length}</h2>
-      <div className="progress"><div style={{ width: `${(donePk / totalPk) * 100}%` }} /></div>
-      <div className="muted small">{doneStops} paradas concluídas · {donePk} de {totalPk} pacotes marcados</div>
-      {session.plan.method === 'linha-reta' ? <MethodBanner method={session.plan.method} stale={session.plan.stale} /> : null}
+    <div className="ss ss-body">
+      <div className="ss-topline">
+        <span>Parada <b>{pos}</b> de {all.length}</span>
+        <span>{donePk}/{totalPk} pacotes</span>
+      </div>
+      <div className="ss-prog" style={{ marginBottom: 10 }}><div style={{ width: `${(donePk / totalPk) * 100}%` }} /></div>
 
-      <div className="card" style={{ borderColor: c?.bg }}>
-        <GroupBadge group={group} big />
-        {session.skipped.includes(cur.id) ? <div className="warn">Esta parada foi pulada antes.</div> : null}
-        {doneHere ? (
-          <div className={cur.packages.every((p) => p.status === 'delivered') ? 'ok' : 'err'}>
-            <b>Parada já marcada:</b> {cur.packages.filter((p) => p.status === 'delivered').length} entregue(s), {cur.packages.filter((p) => p.status === 'failed').length} não entregue(s).
-            <div className="row wrap" style={{ marginTop: 8 }}>
-              <button className="btn small" onClick={() => store.setPackagesStatus(cur.id, 'pending', { packageIds: cur.packages.map((p) => p.id) })}>Desfazer marcação</button>
-              <button className="btn small" onClick={() => store.setCursor(nextStopId(session, cur.id))}>Ir para a próxima pendente</button>
-            </div>
-          </div>
-        ) : null}
-        {isCollection ? (
-          <div className="coleta">PONTO DE COLETA · {cur.packages.length} pacotes{group ? ` · sacola exclusiva${group.special ? '' : ` dentro do Grupo ${group.index}`}` : ''}</div>
-        ) : null}
-        <div className="labels-big" style={{ color: c?.bg }}>
+      {/* 1) parada atual: rua e número, bairro, sacola e pacotes */}
+      {session.detour?.stopId === cur.id ? (() => { const pid = plannedStopId({ ...session, detour: undefined }); const p = pid ? session.stops[pid] : undefined; return <div className="ss-detour"><span>Fora da ordem · depois volta para {p ? street(p) : 'a sequência'}</span><button className="ss-linkbtn" onClick={() => { store.endDetour(); setSelected([]); }}>Voltar à planejada</button></div>; })() : null}
+      <div className="ss-stop" style={{ ['--bc' as string]: bagColor?.bg ?? '#999' }}>
+        <div className="ss-stop-top">
+          {bag ? <span className="ss-bag"><span className="ss-sw" style={{ ['--bc' as string]: bagColor!.bg }} />Pegue na sacola {bag.index} · {bagColor!.name}</span> : <span className="ss-bag">Sem sacola definida</span>}
+          <span className="ss-count">{cur.packages.length} pacote{cur.packages.length > 1 ? 's' : ''}</span>
+        </div>
+        <div className="ss-street">{street(cur)}</div>
+        <div className="ss-hood">{[addr.district, addr.city].filter(Boolean).join(' · ')}{isCollection ? ' · ponto de coleta' : ''}</div>
+        <div className="ss-pk">
           {cur.packages.map((p) => (
             <button
               key={p.id}
-              className={`lbl-btn st-${p.status} ${selected.includes(p.id) ? 'sel' : ''}`}
+              className={p.status === 'delivered' ? 'done' : p.status === 'pending' ? (selected.includes(p.id) ? 'sel' : '') : 'fail'}
               disabled={p.status !== 'pending'}
-              onClick={() => setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))}
+              aria-label={`Pacote ${shortLabel(p)}`}
+              onClick={() => { setMismatchAt(undefined); setSelected((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id])); }}
             >
-              {shortLabel(p)}
+              {shortLabel(p)}{p.extra && (p.tracking || p.trackingSuffix) ? <small>…{(p.tracking ?? p.trackingSuffix)!.slice(-5)}</small> : null}
             </button>
           ))}
         </div>
-        <div className="muted small">{cur.packages.length} pacote(s){cur.packages.some((p) => p.extra) ? ' (inclui adicional sem número)' : ''} · toque nas etiquetas para marcar só algumas</div>
-
-        <div className="addr">{formatAddress(addr, false)}</div>
-        <div className="muted">{addr.district} · {addr.city}</div>
-        {cur.corrected ? <div className="warn small">Endereço corrigido. Original Shopee: {formatAddress(cur.original, false)}</div> : null}
-        <dl className="facts">
-          <dt>Complemento</dt><dd>{cur.complement || '—'}</dd>
-          <dt>Imóvel</dt><dd>{cur.propertyType === 'desconhecido' ? 'Não informado' : `${PROPERTY_LABEL[cur.propertyType]}${cur.propertyTypeSource === 'confirmado' ? ' ✔' : ' (inferido)'}`}</dd>
-          <dt>Quantidade</dt><dd>{cur.packages.length}</dd>
-          <dt>Observações</dt><dd>{cur.notes || '—'}</dd>
-        </dl>
-        {cur.flags.map((f) => <div key={f} className="warn">{f}</div>)}
-
-        <a className="btn waze big nav-big" href={waze.url} target="_blank" rel="noopener noreferrer">NAVEGAR NO WAZE</a>
-        <a className="btn big" href={googleMapsLink(cur)} target="_blank" rel="noopener noreferrer">Abrir no Google Maps</a>
-        <div className="muted small center">{waze.hint} · {geoText(cur.geo)}</div>
-
-        <div className="actions">
-          <button className="btn ok big nav-big" disabled={doneHere} onClick={onDelivered}>✔ ENTREGA CONCLUÍDA{selected.length ? ` (${selected.length})` : ''}</button>
-          <button className="btn danger" disabled={doneHere} onClick={() => setFailOpen(true)}>✖ Não entregue{selected.length ? ` (${selected.length})` : ''}</button>
-          <button className="btn" disabled={doneHere} onClick={onSkip}>Pular parada</button>
-          <button className="btn wide" disabled={pos <= 1} onClick={() => { store.setCursor(session.plan.order[pos - 2]); window.scrollTo({ top: 0 }); }}>← Voltar à parada anterior</button>
-        </div>
-        <button className="link" onClick={() => setEditing(cur.id)}>Corrigir endereço / tipo de imóvel / fixar localização</button>
+        {pend.length > 1 ? <div className="ss-pk-hint">{selected.length ? `${selected.length} de ${pend.length} selecionados` : 'Leia o código ou toque nos pacotes que vai entregar.'}</div> : null}
+        {doneHere ? (
+          <div className="ss-pk-hint" style={{ color: 'var(--go)', fontWeight: 700 }}>
+            Parada já tratada. <button className="ss-linkbtn" onClick={() => store.setPackagesStatus(cur.id, 'pending', { packageIds: cur.packages.map((p) => p.id) })}>Corrigir engano</button>
+          </div>
+        ) : null}
       </div>
 
-      {upcoming.length ? (
-        <div className="stack">
-          <h3>Próximas</h3>
-          {upcoming.map((id) => {
-            const st = session.stops[id];
-            const g = groupOfStop(session, id);
-            return (
-              <button key={id} className="next-row" onClick={() => store.setCursor(id)} style={{ borderLeftColor: g ? colorOf(g.colorKey).bg : '#ccc' }}>
-                <Chips packages={st.packages} onlyPending />
-                <span className="small">{formatAddress(effectiveAddress(st), false)}</span>
-              </button>
-            );
-          })}
+      {/* 2) os dois próximos endereços — antes dos controles de baixa */}
+      <div className="ss-next">
+        <div className="ss-next-h"><span>A seguir</span><button onClick={() => setSeqOpen(true)}>Ver sequência completa</button></div>
+        {next2.length ? next2.map((id, i) => {
+          const st = session.stops[id];
+          return (
+            <div className="ss-nrow" key={id}>
+              <span className="ss-nnum">{i + 1}</span>
+              <span className="ss-ntext"><b>{street(st)}</b><span>{effectiveAddress(st).district || '—'} · </span><BagMini id={id} /></span>
+            </div>
+          );
+        }) : <div className="ss-nrow"><span className="ss-ntext"><span>Esta é a última parada pendente.</span></span></div>}
+      </div>
+
+      {/* 3) controles */}
+      <div className="ss-actions">
+        <a className="ss-btn nav" href={waze.url} target="_blank" rel="noopener noreferrer">Navegar no Waze</a>
+        <LabelCheck key={cur.id} current={cur} stops={all} onMatch={id => { setMismatchAt(undefined); setSelected(x => x.includes(id) ? x : [...x, id]); }} onMismatch={() => { setMismatchAt(cur.id); }} />
+        {mismatchAt === cur.id && <div className="ss-warnline">Leia a etiqueta correta ou toque no número do pacote desta parada.</div>}
+        <div className="ss-row2">
+          <button className="ss-btn go" disabled={!target(cur).length} onClick={onDelivered}>✓ Entregue ({target(cur).length})</button>
+          <button className="ss-btn bad" disabled={!target(cur).length} onClick={() => setFailOpen(true)}>Ocorrência</button>
+          <button className="ss-btn ghost" disabled={doneHere} onClick={onSkip}>Pular</button>
+        </div>
+      </div>
+
+      {/* 4) detalhes */}
+      <details className="ss-more">
+        <summary>Ver mais ▾</summary>
+        <dl className="ss-kv">
+          <dt>Complemento</dt><dd>{cur.complement || '—'}</dd>
+          <dt>Observação</dt><dd>{cur.notes || '—'}</dd>
+          <dt>Imóvel</dt><dd>{cur.propertyType === 'desconhecido' ? 'Não informado' : PROPERTY_LABEL[cur.propertyType]}</dd>
+          <dt>Destino no Waze</dt><dd>{waze.hint}</dd>
+          <dt>Localização</dt><dd>{geoText(cur.geo)}</dd>
+          {bag && session.carLoad ? <><dt>No carro</dt><dd>{cargoPosition(session.carLoad.findIndex(b => b.index === bag.index), session.carLoad.length)}</dd></> : null}
+        </dl>
+        {cur.corrected ? <div className="ss-warnline">Endereço corrigido. Original Shopee: {formatAddress(cur.original, false)}</div> : null}
+        {cur.flags.map((f) => <div key={f} className="ss-warnline">{f}</div>)}
+        <div className="ss-kv" style={{ display: 'block', marginTop: 8 }}>
+          <div style={{ fontSize: 13, color: 'var(--soft)', marginBottom: 6 }}>Baixa no app da Shopee (separada da entrega física)</div>
+          <div className="ss-pk" style={{ marginTop: 0 }}>
+            {cur.packages.map(pkg => <button key={pkg.id} className={pkg.shopeeClosed ? 'sel' : ''} onClick={() => store.setClosed(cur.id, pkg.id, !pkg.shopeeClosed)}>{pkg.shopeeClosed ? '✓ ' : ''}{shortLabel(pkg)}</button>)}
+          </div>
+        </div>
+        <div className="ss-links">
+          <a href={googleMapsLink(cur)} target="_blank" rel="noopener noreferrer">Abrir no Google Maps</a>
+          <button disabled={pos <= 1} onClick={() => goTo(session.plan.order[pos - 2])}>← Voltar à parada anterior</button>
+          <button disabled={doneHere} onClick={() => { const pinned = !session.pinnedLast?.includes(cur.id); store.pinLast(cur.id, pinned); if (pinned) advance(cur.id, true); }}>{session.pinnedLast?.includes(cur.id) ? 'Tirar do final' : 'Deixar esta parada para o final'}</button>
+          <button onClick={() => setEditing(cur.id)}>Corrigir endereço ou localização</button>
+        </div>
+        <details className="ss-sub-more"><summary>Escolher outra parada e replanejar</summary>
+          <select aria-label="Escolher parada pendente" value={cur.id} onChange={e => goTo(e.target.value)}>
+            {all.filter(st => isPending(st) || st.id === cur.id).map(st => <option key={st.id} value={st.id}>{formatAddress(effectiveAddress(st))}</option>)}
+          </select>
+          <button className="ss-btn ghost" style={{ width: '100%', marginTop: 8 }} disabled={planning || doneHere || !cur.geo || !!session.pinnedLast?.includes(cur.id)} onClick={async () => {
+            setPlanning(true); setPlanMessage('Consultando os tempos de carro…');
+            try { await optimizeRoute(() => {},undefined,cur.geo,cur.id); setPlanMessage('Pendências recalculadas a partir desta parada. As sacolas continuam as do carregamento.'); }
+            catch (e) { setPlanMessage((e as Error).message); }
+            finally { setPlanning(false); }
+          }}>Recalcular a partir desta parada</button>
+          {planMessage && <p role="status">{planMessage}</p>}
+        </details>
+        <UndoList stops={lastDone} />
+        {recent.length ? <div className="ss-pk-hint">Último registro: {recent[0].justification}</div> : null}
+      </details>
+
+      {seqOpen ? (
+        <div className="ss-sheet-bg" onClick={() => setSeqOpen(false)}>
+          <div className="ss-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Sequência completa">
+            <div className="ss-sheet-h"><b>Sequência completa</b><button onClick={() => setSeqOpen(false)}>Voltar à parada atual</button></div>
+            <div className="ss-sheet-list">
+              {all.map((st, i) => (
+                <div key={st.id} className={`ss-seq ${st.id === cur.id ? 'cur' : ''} ${!isPending(st) ? 'done' : ''}`}>
+                  <span className="n">{i + 1}</span>
+                  <span className="t"><b>{street(st)}</b><span>{effectiveAddress(st).district || '—'} · {st.packages.map(shortLabel).join(' ')}</span></span>
+                  <BagMini id={st.id} />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
-      <UndoList stops={lastDone} />
-      {recent.length ? <div className="muted small">Último registro: {recent[0].justification}</div> : null}
 
       <Modal open={failOpen} title="Não entregue" onClose={() => setFailOpen(false)}>
         <div className="stack">
           {FAIL_REASONS.map((r) => <button key={r} className={`btn ${failReason === r ? 'primary' : ''}`} onClick={() => setFailReason(r)}>{r}</button>)}
           <input value={failReason} onChange={(e) => setFailReason(e.target.value)} placeholder="Outro motivo" />
           <button className="btn danger big" disabled={!failReason.trim()} onClick={onFailed}>Registrar não entrega</button>
+          <label>Data combinada para nova entrega <input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+          <button className="btn" disabled={!date || !target(cur).length} onClick={() => {
+            store.setPackagesStatus(cur.id,'rescheduled',{packageIds:target(cur),date});
+            setFailOpen(false); setDate(''); setFailReason(''); advance(cur.id);
+          }}>Registrar reagendamento</button>
         </div>
       </Modal>
 

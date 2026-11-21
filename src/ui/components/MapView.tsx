@@ -58,7 +58,11 @@ export function MapView({
         iconAnchor: [14, 14],
       });
       const marker = L.marker([mk.lat, mk.lng], { icon }).addTo(lg);
-      if (mk.popup) marker.bindTooltip(mk.popup, { direction: 'top' });
+      if (mk.popup) {
+        const label = document.createElement('span');
+        label.textContent = mk.popup;
+        marker.bindTooltip(label, { direction: 'top' });
+      }
       marker.on('click', () => markerRef.current?.(mk.id));
     }
     if (focus) m.setView(focus, Math.max(m.getZoom(), 17));

@@ -1,11 +1,11 @@
 {
-  "name": "Rotas Shopee — Organização de entregas",
-  "short_name": "Rotas",
+  "name": "ShoSho · Entregas",
+  "short_name": "ShoSho",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f4f1",
-  "theme_color": "#ee4d2d",
+  "background_color": "#f5f6f2",
+  "theme_color": "#153d3b",
   "lang": "pt-BR",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },

@@ -1,12 +1,11 @@
 import { addressKey, effectiveAddress, normalizeStreet } from '../domain/address';
 import type { GeoPoint, RoutePlan, Stop } from '../domain/types';
 import { optimizedPlan, type PlanOptions } from '../optimize/plan';
-import { orderedStops, useStore } from '../store/store';
+import { isPending, orderedStops, useStore } from '../store/store';
 import { fetchDivider, sideOf } from './divider';
 import { nominatim } from './geocoding/nominatim';
 import type { GeocodingProvider } from './geocoding/types';
 import { osrmProvider } from './routing/osrm';
-import { straightLine } from './routing/haversine';
 import type { LatLng, TravelMatrix } from './routing/types';
 
 export interface Progress {
@@ -47,11 +46,17 @@ export async function geocodeAll(onProgress: (p: Progress) => void, signal?: Abo
 /** Calcula o lado da avenida divisora para cada parada localizada. */
 export async function computeDividerSides(signal?: AbortSignal): Promise<string> {
   const { session, settings, updateStop } = useStore.getState();
+  dividerCache = null;
+  for (const stop of Object.values(session?.stops ?? {})) {
+    if (stop.dividerSide !== undefined) updateStop(stop.id, { dividerSide: undefined });
+  }
   if (!session || !settings.dividerEnabled || !settings.dividerName.trim()) return 'Avenida divisora desativada.';
   const located = Object.values(session.stops).filter((s) => s.geo);
   if (!located.length) return 'Sem paradas localizadas.';
   const lats = located.map((s) => s.geo!.lat), lngs = located.map((s) => s.geo!.lng);
   const div = await fetchDivider(settings.dividerName, { s: Math.min(...lats), n: Math.max(...lats), w: Math.min(...lngs), e: Math.max(...lngs) }, signal);
+  signal?.throwIfAborted();
+  if (useStore.getState().session?.id !== session.id || useStore.getState().settings.dividerName !== settings.dividerName || !useStore.getState().settings.dividerEnabled) throw new Error('A configuração da rota mudou.');
   if (!div) return `Não encontrei "${settings.dividerName}" no mapa desta região.`;
   for (const s of located) {
     const onAvenue = normalizeStreet(effectiveAddress(s).street) === normalizeStreet(settings.dividerName);
@@ -86,23 +91,25 @@ function runInWorker(stops: Stop[], located: Stop[], matrix: TravelMatrix, opts:
 }
 
 /** Matriz de tempos pela malha viária e otimização global. */
-export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: AbortSignal, start?: LatLng): Promise<{ plan: RoutePlan; warning?: string }> {
+export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: AbortSignal, start?: LatLng, first?: string, apply = true): Promise<{ plan: RoutePlan }> {
   const { session, settings, setPlan } = useStore.getState();
   if (!session) throw new Error('Nenhuma rota importada.');
-  const stops = orderedStops(session);
+  signal?.throwIfAborted();
+  const all = orderedStops(session);
+  const stops = all.filter(isPending);
   const located = stops.filter((s) => s.geo);
+  if (located.length !== stops.length) throw new Error(`Faltam localizar ${stops.length - located.length} parada(s). A ordem atual foi mantida.`);
   if (located.length < 2) throw new Error('Localize os endereços antes de otimizar (mínimo 2 paradas com localização).');
   const points: LatLng[] = located.map((s) => ({ lat: s.geo!.lat, lng: s.geo!.lng }));
   if (start) points.push(start);
 
   onProgress({ step: 'Consultando tempos de carro pela malha viária', done: 0, total: 1 });
   let matrix: TravelMatrix;
-  let warning: string | undefined;
   try {
     matrix = await osrmProvider(settings.osrmUrl).matrix(points, signal);
   } catch (e) {
-    warning = `Serviço de rotas indisponível (${(e as Error).message}). Usei estimativa em linha reta — a ordem é APROXIMADA.`;
-    matrix = await straightLine.matrix(points);
+    signal?.throwIfAborted();
+    throw new Error(`Serviço de rotas indisponível (${(e as Error).message}). A ordem atual foi mantida. Você pode seguir o plano salvo e recalcular quando a conexão voltar.`);
   }
   let fromStart: number[] | undefined;
   if (start) {
@@ -111,8 +118,17 @@ export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: 
     matrix = { ...matrix, durations: matrix.durations.slice(0, si).map((r) => r.slice(0, si)) };
   }
   onProgress({ step: 'Otimizando a sequência de todas as paradas', done: 0, total: 1 });
-  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, exclude: Object.keys(session.specials ?? {}) });
+  const plan = await runInWorker(stops, located, matrix, { groupCount: settings.groupCount, importedOrder: session.importedOrder, fromStart, first, last:session.pinnedLast, exclude: Object.keys(session.specials ?? {}) });
+  signal?.throwIfAborted();
+  const latest = useStore.getState().session;
+  if (latest !== session || useStore.getState().settings !== settings) throw new Error('A rota mudou durante o cálculo. Recalcule as pendências.');
+  const completed = all.filter(stop => !isPending(stop));
+  plan.order = [...completed.map(stop => stop.id), ...plan.order];
+  if (session.carLoad) {
+    plan.groups = session.plan.groups;
+  }
+  if (!apply) { onProgress({ step: 'Prévia pronta', done: 1, total: 1 }); return { plan }; }
   setPlan(plan);
   onProgress({ step: 'Concluído', done: 1, total: 1 });
-  return { plan, warning };
+  return { plan: useStore.getState().session!.plan };
 }

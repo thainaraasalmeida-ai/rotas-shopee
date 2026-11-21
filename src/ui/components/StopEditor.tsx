@@ -31,18 +31,19 @@ function Editor({ stop, onClose }: { stop: Stop; onClose: () => void }) {
   const cur = effectiveAddress(stop);
   const [street, setStreet] = useState(cur.street);
   const [number, setNumber] = useState(cur.number);
+  const [district, setDistrict] = useState(cur.district ?? '');
   const [note, setNote] = useState(stop.correctionNote ?? '');
   const [msg, setMsg] = useState('');
   const [pickOnMap, setPickOnMap] = useState(false);
 
   const saveCorrection = () => {
     if (!street.trim()) return;
-    if (street.trim() === stop.original.street && number.trim() === stop.original.number) {
+    if (street.trim() === stop.original.street && number.trim() === stop.original.number && district.trim() === (stop.original.district ?? '')) {
       correctAddress(stop.id, undefined);
       setMsg('Mantido o endereço original da Shopee.');
       return;
     }
-    correctAddress(stop.id, { ...stop.original, street: street.trim(), number: number.trim(), raw: `${street.trim()}, ${number.trim()}` }, note.trim() || undefined);
+    correctAddress(stop.id, { ...stop.original, street: street.trim(), number: number.trim(), district: district.trim(), raw: `${street.trim()}, ${number.trim()}` }, note.trim() || undefined);
     setMsg('Correção salva. A localização será refeita e a rota marcada para recalcular (o original foi preservado).');
   };
 
@@ -51,6 +52,7 @@ function Editor({ stop, onClose }: { stop: Stop; onClose: () => void }) {
     if (!('geolocation' in navigator)) return setMsg('GPS indisponível neste navegador.');
     navigator.geolocation.getCurrentPosition(
       (p) => {
+        if (!Number.isFinite(p.coords.accuracy) || p.coords.accuracy > 35) { setMsg('O GPS ainda não distingue o imóvel. Tente de novo na porta ou marque o ponto no mapa.'); return; }
         setGeo(stop.id, { lat: p.coords.latitude, lng: p.coords.longitude, precision: 'gps', verified: true, source: `GPS (±${Math.round(p.coords.accuracy)} m)` });
         setMsg(`Localização fixada pelo GPS (precisão ±${Math.round(p.coords.accuracy)} m). Será reutilizada nas próximas rotas para este endereço.`);
       },
@@ -72,11 +74,12 @@ function Editor({ stop, onClose }: { stop: Stop; onClose: () => void }) {
 
         <div className="lbl">Correção manual</div>
         <input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" />
-        <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Número" inputMode="numeric" />
+        <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Número" />
+        <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="Bairro" />
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Motivo (ex.: etiqueta diz Tomás Gonzaga)" />
         <div className="row">
           <button className="btn primary" onClick={saveCorrection}>Salvar correção</button>
-          {stop.corrected ? <button className="btn" onClick={() => { correctAddress(stop.id, undefined); setStreet(stop.original.street); setNumber(stop.original.number); setMsg('Voltou ao endereço original.'); }}>Usar original</button> : null}
+          {stop.corrected ? <button className="btn" onClick={() => { correctAddress(stop.id, undefined); setStreet(stop.original.street); setNumber(stop.original.number); setDistrict(stop.original.district ?? ''); setMsg('Voltou ao endereço original.'); }}>Usar original</button> : null}
         </div>
 
         <div className="lbl">Ponto de coleta</div>

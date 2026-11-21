@@ -7,7 +7,7 @@ import type { MatrixProvider, TravelMatrix } from './types';
  * em produção, aponte `baseUrl` para um OSRM próprio.
  */
 export function osrmProvider(baseUrl = 'https://router.project-osrm.org'): MatrixProvider {
-  const CHUNK = 90;
+  const CHUNK = 50;
   return {
     name: `OSRM (${new URL(baseUrl).host})`,
     async matrix(points, signal): Promise<TravelMatrix> {
@@ -30,7 +30,9 @@ export function osrmProvider(baseUrl = 'https://router.project-osrm.org'): Matri
           if (json.code !== 'Ok') throw new Error(`OSRM: ${json.message ?? json.code}`);
           src.forEach((i, a) =>
             dst.forEach((j, b) => {
-              durations[i][j] = json.durations[a][b] ?? 1e6;
+              const seconds = json.durations?.[a]?.[b];
+              if (!Number.isFinite(seconds) || seconds < 0) throw new Error('Há trechos sem conexão viária na matriz.');
+              durations[i][j] = seconds;
               distances[i][j] = json.distances?.[a]?.[b] ?? 0;
             }),
           );

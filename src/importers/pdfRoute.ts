@@ -3,6 +3,7 @@ import { parseLabelTokens, tokensToPackages } from '../domain/packages';
 import type { Group, ImportResult, Stop } from '../domain/types';
 import { groupColorKey } from '../domain/colors';
 import { validateImport } from './validate';
+import { blockHeader, parseBlocks } from './pdfBlocks';
 
 export interface TextItem {
   str: string;
@@ -38,6 +39,7 @@ const COMPLEMENT_LIKE = /^(ap|apt|apto|apartamento|casa|bloco|bl|sala|loja|fundo
 
 /** Interpreta as linhas de um PDF de rota organizada (formato "GRUPO N ... / parada / #etiquetas"). */
 export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportResult {
+  if (lines.some(line => blockHeader.test(line.trim()))) return parseBlocks(lines,fileName);
   const stops: Stop[] = [];
   const groups: Group[] = [];
   const declaredGroups = new Map<number, { packages: number; stops: number }>();
@@ -143,6 +145,7 @@ export function parseRouteLines(lines: string[], fileName = 'rota.pdf'): ImportR
   }
 
   const result: ImportResult = { source: 'pdf', fileName, title, stops, groups, issues: [], declared };
-  result.issues = validateImport(result, declaredGroups);
+  result.issues = [...validateImport(result, declaredGroups), ...stops.flatMap(stop =>
+    stop.flags.filter(flag => flag.startsWith('O arquivo informa')).map(message => ({ level: 'erro' as const, message: `Parada ${stop.importedSeq}: ${message}` })))];
   return result;
 }
