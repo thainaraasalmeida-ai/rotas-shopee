@@ -2,7 +2,8 @@ const prefix = 'shosho-' + self.registration.scope + '-';
 const cacheName = prefix + '__VERSION__';
 const files = "__FILES__";
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(files)));
+  // versão nova assume logo, sem esperar fechar todas as janelas
+  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(files)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {

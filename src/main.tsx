@@ -14,7 +14,11 @@ createRoot(document.getElementById('root')!).render(
 const nativeApp = !!(window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
 if (import.meta.env.PROD && !nativeApp && 'serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
+    // Quando chega uma versão nova, recarrega uma vez para mostrar as telas atualizadas (os dados ficam salvos).
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {
       /* ambiente sem suporte (ex.: visualização dentro do Claude) */
     });
   });

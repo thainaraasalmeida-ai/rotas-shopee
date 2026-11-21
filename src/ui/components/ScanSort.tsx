@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { effectiveAddress } from '../../domain/address';
 import { colorOf } from '../../domain/colors';
 import type { Package, Stop } from '../../domain/types';
-import { groupOfStop, useStore, type Session } from '../../store/store';
+import { canPrepareBags, groupOfStop, useStore, type Session } from '../../store/store';
 import { Icon } from './Icon';
 
 interface Detector { detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string }>> }
@@ -43,7 +43,7 @@ export function ScanSort() {
     recent.current = { code, at: now };
     const s = useStore.getState().session!;
     const r = lookupCode(s, code);
-    if (r.kind === 'ok') useStore.getState().recordSort(r.pkg.id, r.bag, r.colorKey);
+    if (r.kind === 'ok' && canPrepareBags(s)) useStore.getState().recordSort(r.pkg.id, r.bag, r.colorKey);
     setLast(r);
     try { navigator.vibrate?.(r.kind === 'ok' ? 60 : [80, 60, 80]); } catch { /* sem vibração */ }
   };
@@ -85,6 +85,7 @@ export function ScanSort() {
     <div className="ss ss-scan">
       <div className="ss-topline"><span><b>{done}</b> de {all.length} separados</span><span>{all.length - done} faltam</span></div>
       <div className="ss-prog" style={{ marginBottom: 8 }}><div style={{ width: `${(done / Math.max(1, all.length)) * 100}%` }} /></div>
+      {!canPrepareBags(session) ? <div className="ss-warnline">Rota ainda não calculada: a leitura só consulta, não guarda. Calcule a rota em Rota antes de separar.</div> : null}
       <button className="ss-btn go" onClick={() => setScanning(!scanning)}><Icon name="scan" />{scanning ? 'Fechar câmera' : 'Ler etiquetas com a câmera'}</button>
       {scanning ? <video ref={video} muted playsInline className="ss-scan-video" /> : null}
       {camMsg ? <div className="ss-near-warn">{camMsg}</div> : null}

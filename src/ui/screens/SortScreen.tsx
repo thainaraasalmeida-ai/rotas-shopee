@@ -12,15 +12,16 @@ import { ScanSort } from '../components/ScanSort';
 export function SortScreen() {
   const session=useStore(s=>s.session)!;
   const [mode,setMode]=useState<'car'|'scan'>('car');
-  if (!canPrepareBags(session)) return <div className="screen stack"><h2>Carregar o carro</h2>
-    <p>Calcule o trajeto pelas ruas para saber quais pacotes vão juntos e qual sacola fica na abertura.</p>
-    {session.carLoad && <p className="info">O carregamento anterior continua salvo. Em Entregar você pode consultar a sacola onde guardou cada pacote.</p>}
-    <a className="btn primary big" href="#rota">Preparar trajeto</a>
-  </div>;
+  const ready = canPrepareBags(session);
   return <div className="screen loading-screen"><h2>Carregar o carro</h2>
     <div className="load-switch"><button aria-pressed={mode==='car'} onClick={()=>setMode('car')}>Por sacola</button>
       <button aria-pressed={mode==='scan'} onClick={()=>setMode('scan')}>Ler etiqueta</button></div>
-    {mode==='car'?<><CarLoading session={session}/><details className="ss-more" style={{marginTop:12}}><summary>Buscar pacote e pontos de coleta</summary><BagsList/></details></>:<ScanSort/>}
+    {mode==='scan' ? <ScanSort/> : ready ? <><CarLoading session={session}/><details className="ss-more" style={{marginTop:12}}><summary>Buscar pacote e pontos de coleta</summary><BagsList/></details></> : <div className="stack">
+      <p className="ss-warnline">Falta calcular a rota pelas ruas. Sem isso a ShoSho não sabe a ordem das sacolas no carro.</p>
+      <p className="small muted">Vá em Rota, confirme de onde vai sair e toque em “Calcular rota e montar sacolas”. Em “Ler etiqueta” você já pode consultar em qual sacola cada pacote está.</p>
+      {session.carLoad && <p className="info">O carregamento anterior continua salvo. Em Entregar você pode consultar a sacola onde guardou cada pacote.</p>}
+      <a className="ss-btn go" href="#rota">Ir para Rota</a>
+    </div>}
   </div>;
 }
 

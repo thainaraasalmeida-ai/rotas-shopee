@@ -5,6 +5,7 @@ import { storageAvailable } from './store/persistence';
 import { DeliveryScreen } from './ui/screens/DeliveryScreen';
 import { ImportScreen } from './ui/screens/ImportScreen';
 import { ReportScreen } from './ui/screens/ReportScreen';
+import { ErrorBoundary } from './ui/components/ErrorBoundary';
 import { NearbyScreen } from './ui/screens/NearbyScreen';
 import { RouteScreen } from './ui/screens/RouteScreen';
 import { SortScreen } from './ui/screens/SortScreen';
@@ -65,10 +66,10 @@ export default function App() {
       {!storageOk ? <div className="ss-save-err" role="alert">⚠ O iPhone não conseguiu salvar a última ação. Não feche a ShoSho: vá em Resumo e salve uma cópia de segurança agora.</div> : null}
       <main>
         {active === 'importar' && <ImportScreen onDone={() => go(useStore.getState().session?.plan.order.length === 1 ? 'separar' : 'rota')} />}
-        {active === 'separar' && session && <SortScreen />}
-        {active === 'entregar' && session && <DeliveryScreen />}
-        {active === 'perto' && session && <NearbyScreen onGo={() => go('entregar')} />}
-        {active === 'rota' && session && <RouteScreen onBuilt={() => go('separar')} />}
+        {active === 'separar' && session && <ErrorBoundary key="c" name="Carregar"><SortScreen /></ErrorBoundary>}
+        {active === 'entregar' && session && <ErrorBoundary key="e" name="Entregar"><DeliveryScreen /></ErrorBoundary>}
+        {active === 'perto' && session && <ErrorBoundary key="p" name="Perto de mim"><NearbyScreen onGo={() => go('entregar')} /></ErrorBoundary>}
+        {active === 'rota' && session && <ErrorBoundary key="r" name="Rota"><RouteScreen onBuilt={() => go('separar')} /></ErrorBoundary>}
         {active === 'relatorio' && session && <ReportScreen />}
       </main>
       <nav className="tabs">
