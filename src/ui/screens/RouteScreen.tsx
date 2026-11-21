@@ -7,8 +7,9 @@ import { groupOfStop, orderedStops, useStore } from '../../store/store';
 import { fmtMin, MethodBanner } from '../components/common';
 import { MapView, type MapMarker } from '../components/MapView';
 import { StopEditor } from '../components/StopEditor';
+import { StartPicker } from '../components/StartPicker';
 
-export function RouteScreen() {
+export function RouteScreen({ onBuilt }: { onBuilt?: () => void } = {}) {
   const { session, settings, setSettings, setPlan } = useStore();
   const s = session!;
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -18,6 +19,7 @@ export function RouteScreen() {
   const [guard, setGuard] = useState(false);
   const [position,setPosition] = useState<GeolocationPosition>();
   const [gpsMessage,setGpsMessage] = useState('');
+  const [picking, setPicking] = useState(!s.start);
   useEffect(() => {
     if (!settings.useGpsStart || !navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(p => {setPosition(p);setGpsMessage('');},() => setGpsMessage('GPS sem sinal ou permissão.'),{enableHighAccuracy:true,maximumAge:10000,timeout:12000});
@@ -33,18 +35,29 @@ export function RouteScreen() {
 
   const say = (cls: string, text: string) => setLog((l) => [...l, { cls, text }]);
 
-  const run = async (what: 'geo' | 'opt') => {
+  const run = async (what: 'geo' | 'opt' | 'build') => {
     abort.current?.abort();
     const ac = new AbortController();
     abort.current = ac;
     setLog([]);
     try {
-      if (what === 'geo') {
+      if (what === 'build') {
+        if (!s.start) throw new Error('Confirme de onde você vai sair.');
+        if (stops.some(x => !x.geo)) {
+          const r = await geocodeAll(setProgress, ac.signal);
+          if (r.failed) throw new Error(`${r.failed} endereço(s) sem localização. Corrija ou marque no mapa antes de montar as sacolas.`);
+        }
+        try { setProgress({ step: 'Buscando a avenida divisora no mapa', done: 0, total: 1 }); say('info', await computeDividerSides(ac.signal)); }
+        catch (e) { say('warn', `Não consegui buscar a avenida divisora (${(e as Error).message}). A rota segue sem essa penalidade.`); }
+        const { plan } = await optimizeRoute(setProgress, ac.signal, s.start);
+        say('ok', `Rota pronta a partir de ${s.start.label}: ${fmtMin(plan.firstSeconds)} até a primeira entrega, ${fmtMin(plan.totalSeconds)} ao volante no total.`);
+        onBuilt?.();
+      } else if (what === 'geo') {
         const r = await geocodeAll(setProgress, ac.signal);
         say(r.failed ? 'warn' : 'ok', `${r.ok} endereço(s) localizado(s)${r.failed ? `, ${r.failed} não encontrado(s) — corrija ou marque no mapa` : ''}.`);
       } else {
-        let start: { lat: number; lng: number } | undefined;
-        if (settings.useGpsStart) {
+        let start: { lat: number; lng: number; label?: string } | undefined = s.start;
+        if (!start && settings.useGpsStart) {
           start = navigator.geolocation ? await new Promise((res) => navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res(undefined), { timeout: 10000 })) : undefined;
           say(start ? 'info' : 'warn', start ? 'Partida: sua localização atual.' : 'GPS indisponível; a rota começa pela parada mais conveniente.');
         }
@@ -89,6 +102,10 @@ export function RouteScreen() {
 
   return (
     <div className="screen">
+      {picking ? <StartPicker onConfirmed={() => setPicking(false)} /> : s.start ? <div className="ss-built">
+        <div className="ss-start-line"><b>Saída:</b> {s.start.label} <button className="ss-linkbtn" onClick={() => setPicking(true)}>Trocar</button></div>
+        <button className="ss-btn go" disabled={!!progress} onClick={() => run('build')}>Calcular rota e montar sacolas</button>
+      </div> : null}
       <h2>Seu trajeto</h2>
       <MethodBanner method={s.plan.method} stale={s.plan.stale} />
       <div className="stats">

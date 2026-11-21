@@ -65,8 +65,8 @@ export function MapView({
       }
       marker.on('click', () => markerRef.current?.(mk.id));
     }
-    if (focus) m.setView(focus, Math.max(m.getZoom(), 17));
-    else if (markers.length) m.fitBounds(L.latLngBounds(markers.map((x) => [x.lat, x.lng] as [number, number])).pad(0.15));
+    if (focus) m.setView(focus, Math.max(m.getZoom(), 17), { animate: false });
+    else if (markers.length) m.fitBounds(L.latLngBounds(markers.map((x) => [x.lat, x.lng] as [number, number])).pad(0.15), { animate: false });
   }, [markers, path, divider, focus]);
 
   return <div ref={el} className="map" style={{ height }} />;

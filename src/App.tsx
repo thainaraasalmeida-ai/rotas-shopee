@@ -68,7 +68,7 @@ export default function App() {
         {active === 'separar' && session && <SortScreen />}
         {active === 'entregar' && session && <DeliveryScreen />}
         {active === 'perto' && session && <NearbyScreen onGo={() => go('entregar')} />}
-        {active === 'rota' && session && <RouteScreen />}
+        {active === 'rota' && session && <RouteScreen onBuilt={() => go('separar')} />}
         {active === 'relatorio' && session && <ReportScreen />}
       </main>
       <nav className="tabs">

@@ -100,6 +100,12 @@ export interface RoutePlan {
   notes: string[];
   /** true quando endereços foram corrigidos depois do cálculo. */
   stale?: boolean;
+  /** Ponto de saída usado no cálculo (estacionamento onde organiza os pacotes ou GPS). */
+  start?: { lat: number; lng: number; label: string };
+  /** Tempo de carro da saída até a primeira entrega (s). */
+  firstSeconds?: number;
+  /** Tempo de carro até cada parada, a partir da anterior na sequência (s). */
+  legSeconds?: Record<string, number>;
 }
 
 export type IssueLevel = 'erro' | 'aviso' | 'info';

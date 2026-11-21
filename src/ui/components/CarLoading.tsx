@@ -6,8 +6,9 @@ import { carLoading } from '../../optimize/loading';
 import { useStore, type Session } from '../../store/store';
 import type { Package } from '../../domain/types';
 import '../shosho/shosho.css';
+import { fmtMin } from './common';
 
-const tag = (p: Package) => (p.extra ? `${p.label}${p.tracking || p.trackingSuffix ? ` …${(p.tracking ?? p.trackingSuffix)!.slice(-5)}` : ''}` : p.label);
+const tag = (p: Package): string => (p.extra ? `${p.label}${p.tracking || p.trackingSuffix ? ` …${(p.tracking ?? p.trackingSuffix)!.slice(-5)}` : ''}` : p.label);
 
 /**
  * Carregar o carro, na ordem em que as sacolas entram no porta-malas:
@@ -31,12 +32,26 @@ export function CarLoading({ session: s }: { session: Session }) {
   const totalPk = bags.reduce((n, b) => n + b.visits.reduce((m, v) => m + v.packages.length, 0), 0);
   const firstBag = bags[bags.length - 1];
 
+  const first = firstBag.visits[0];
+  const fa = effectiveAddress(first.stop);
+  const fc = colorOf(firstBag.group.colorKey);
   return (
     <div className="ss">
+      <div className="ss-start-card">
+        <span className="lbl">Saída</span>
+        <span>{s.plan.start?.label ?? 'Sem ponto de saída — o tempo começa na 1ª entrega'}</span>
+        <span className="lbl">Primeira entrega</span>
+        <span className="big">{fa.street}, {fa.number}</span>
+        <span>{fa.district}{s.plan.firstSeconds !== undefined ? ` · ${fmtMin(s.plan.firstSeconds)} de carro até lá` : ''}</span>
+        <span className="lbl">Etiquetas para pegar</span>
+        <span className="pk">{first.packages.map(tag).join(' ')}</span>
+        <div className="door"><span className="ss-sw" style={{ ['--bc' as string]: fc.bg }} />Deixe na abertura do porta-malas: Sacola {firstBag.group.index} · {fc.name}</div>
+      </div>
       <div className="ss-check">
         <span className="ss-ok">✔ Sequência pelas ruas (mão única, conversões e travessias){s.plan.totalSeconds ? ` · ~${Math.round(s.plan.totalSeconds / 60)} min ao volante` : ''}</span>
         <span className={integ.ok ? 'ss-ok' : 'ss-no'}>{integ.ok ? `✔ ${totalPk} pacotes pendentes, cada um em uma sacola só` : '✖ Há pacote em duas sacolas ou sem sacola — confira antes de carregar'}</span>
-        <span>Primeira entrega: <b>{(() => { const a = effectiveAddress(firstBag.visits[0].stop); return `${a.street}, ${a.number}`; })()}</b> · Sacola {firstBag.group.index} · {colorOf(firstBag.group.colorKey).name}</span>
+        <span>Carregue na ordem abaixo: começa pela sacola do fundo e termina na da abertura.</span>
+        {(() => { const sortedAll = Object.values(s.stops).flatMap(st => st.packages.filter(p => p.status === 'pending')); const n = sortedAll.filter(p => s.sorted?.[p.id]).length; const off = bags.flatMap(b => b.visits.flatMap(v => v.packages.filter(p => s.sorted?.[p.id] && s.sorted[p.id].bag !== b.group.index).map(p => `${p.label} (está na ${s.sorted![p.id].bag})`))); return <>{n ? <span>{n} de {sortedAll.length} pacotes já separados por leitura.</span> : null}{off.length ? <span className="ss-wa">• {off.length} pacote(s) foram guardados em outra sacola antes desta sequência: {off.slice(0, 6).join(', ')}{off.length > 6 ? '…' : ''}. Em Entregar vale a sacola onde você guardou.</span> : null}</>; })()}
         {s.carLoad && !matches ? <span className="ss-wa">• A sequência mudou depois do carregamento. Em Entregar continua aparecendo a sacola onde você guardou cada pacote.</span> : null}
       </div>
 
@@ -49,6 +64,7 @@ export function CarLoading({ session: s }: { session: Session }) {
           const expanded = open === b.group.index || (open === null && isBottom);
           const hoods = [...new Set(b.visits.map(v => effectiveAddress(v.stop).district).filter(Boolean))].join(', ');
           const top = b.visits[0];
+          const stored = b.visits.reduce((n, v) => n + v.packages.filter(p => s.sorted?.[p.id]?.bag === b.group.index).length, 0);
           return (
             <section key={b.group.index} className={`ss-load ${isDoor ? 'first' : ''}`} data-step={i + 1} style={{ ['--bc' as string]: c.bg }}>
               <button className="ss-load-h" onClick={() => setOpen(expanded ? -1 : b.group.index)} aria-expanded={expanded}>
@@ -56,7 +72,8 @@ export function CarLoading({ session: s }: { session: Session }) {
                 <span className="ttl">
                   <em>{isBottom ? 'Coloque esta sacola no fundo' : isDoor ? 'Deixe esta perto da abertura · 1ª entrega' : `${i + 1}ª a entrar`}</em>
                   <b>Sacola {b.group.index} · {c.name}{b.group.special ? ' · ponto de coleta' : ''}</b>
-                  <span>{count} pacote{count > 1 ? 's' : ''} · {b.visits.length} parada{b.visits.length > 1 ? 's' : ''}{hoods ? ` · ${hoods}` : ''}</span>
+                  <span className="ss-bagprog">{c.name} · {stored} de {count} guardados{stored === count ? ' ✓' : ''}</span>
+                  <span>{b.visits.length} parada{b.visits.length > 1 ? 's' : ''}{hoods ? ` · ${hoods}` : ''}</span>
                 </span>
                 <span className="cnt">{expanded ? '▴' : '▾'}</span>
               </button>
@@ -68,7 +85,7 @@ export function CarLoading({ session: s }: { session: Session }) {
                     const isTop = j === arr.length - 1;
                     return (
                       <div key={v.stop.id} className="ss-lrow" style={{ cursor: 'default' }}>
-                        <span className="nums">{v.packages.map(tag).join(' ')}</span>
+                        <span className="nums">{v.packages.map(p => { const r = s.sorted?.[p.id]; return <span key={p.id} className={'ss-pkc ' + (!r ? 'no' : r.bag === b.group.index ? 'ok' : 'off')}>{r ? (r.bag === b.group.index ? '✓ ' : `⚠ na ${r.bag} · `) : ''}{tag(p)}</span>; })}</span>
                         <span className="addr">{isTop ? 'por cima · ' : ''}{v.position}ª · {a.street.replace(/^(Rua|Avenida|R\.?|Av\.?) /, '')}, {a.number}</span>
                       </div>
                     );
@@ -85,7 +102,7 @@ export function CarLoading({ session: s }: { session: Session }) {
         <button className="ss-btn go" style={{ width: '100%' }} disabled={matches || !integ.ok} onClick={() => useStore.getState().saveCarLoad(layout)}>
           {matches ? '✓ Carregamento memorizado' : 'Carreguei o carro'}
         </button>
-        {matches ? <a className="ss-btn ghost" style={{ marginTop: 8 }} href="#entregar" onClick={() => useStore.getState().setCursor(firstBag.visits[0].stop.id)}>Ir para a primeira entrega</a> : null}
+        {matches ? <a className="ss-btn ghost" style={{ marginTop: 8 }} href="#entregar" onClick={() => { useStore.getState().setCursor(firstBag.visits[0].stop.id); useStore.getState().depart(); }}>{s.shift?.departedAt ? 'Ir para a entrega atual' : 'Saí para entregar'}</a> : null}
       </div>
     </div>
   );

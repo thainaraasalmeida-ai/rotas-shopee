@@ -7,6 +7,9 @@ import { detectCollectionPoints, regroup, type SpecialKind } from '../optimize/s
 import { parseBackup, safeStorage } from './persistence';
 import { combineTracking } from '../importers/combine';
 
+export interface StartPoint { lat: number; lng: number; label: string; source: 'gps' | 'ponto-de-carga' | 'ajustado'; accuracy?: number; at: number }
+export interface LoadPoint { label: string; lat: number; lng: number }
+
 export interface Session {
   id: string;
   createdAt: number;
@@ -25,6 +28,12 @@ export interface Session {
   carLoad?: { index:number; colorKey:string; stopIds:string[] }[];
   /** Entrega feita fora da ordem ("Perto de mim"); ao terminar, volta para a parada planejada. */
   detour?: { stopId: string; startedAt: number };
+  /** Ponto de saída confirmado para esta rota. */
+  start?: StartPoint;
+  /** Separação: em qual sacola cada pacote foi guardado (pela leitura da etiqueta). Não muda a sequência nem a entrega. */
+  sorted?: Record<string, { bag: number; colorKey: string; at: number }>;
+  /** Jornada: organização do carro e saída para entregar (meta de 4 horas). */
+  shift?: { sortStartedAt?: number; loadedAt?: number; departedAt?: number };
   audit: AuditEntry[];
   /** Pontos de coleta desta rota (stopId → automático/manual). Sobrevivem a recálculos. */
   specials?: Record<string, SpecialKind>;
@@ -40,6 +49,8 @@ export interface Settings {
   dividerEnabled: boolean;
   osrmUrl: string;
   useGpsStart: boolean;
+  /** "Meu ponto de carga": saída do estacionamento onde organiza os pacotes. */
+  loadPoint?: LoadPoint;
   /** A partir de quantos pacotes no mesmo endereço vira ponto de coleta. */
   collectionThreshold: number;
 }
@@ -69,6 +80,10 @@ interface State {
   setGeo(stopId: string, geo: GeoPoint | undefined): void;
   setCursor(stopId: string | undefined): void;
   startDetour(stopId: string): void;
+  setStart(p: StartPoint | undefined): void;
+  recordSort(packageId: string, bag: number, colorKey: string): void;
+  depart(): void;
+  saveLoadPoint(p: LoadPoint | undefined): void;
   endDetour(): void;
   pinLast(stopId: string, pinned: boolean): void;
   markSkipped(stopId: string, skipped: boolean): void;
@@ -147,7 +162,7 @@ export const useStore = create<State>()(
       },
       saveCarLoad(bags) {
         const s = get().session;
-        if (s && canPrepareBags(s)) set({session:{...s,carLoad:bags}});
+        if (s && canPrepareBags(s)) set({session:{...s,carLoad:bags,shift:{...s.shift,loadedAt:Date.now()}}});
       },
       setSpecial(stopId, on) {
         const s = get().session;
@@ -257,6 +272,26 @@ export const useStore = create<State>()(
           const key = addressKey(effectiveAddress(s.stops[stopId]));
           set({ verifiedGeo: { ...get().verifiedGeo, [key]: geo } });
         }
+      },
+      recordSort(packageId, bag, colorKey) {
+        const s = get().session;
+        if (!s || s.sorted?.[packageId]) return;
+        const now = Date.now();
+        set({ session: { ...s, sorted: { ...s.sorted, [packageId]: { bag, colorKey, at: now } }, shift: { ...s.shift, sortStartedAt: s.shift?.sortStartedAt ?? now } } });
+      },
+      depart() {
+        const s = get().session;
+        if (!s || s.shift?.departedAt) return;
+        set({ session: { ...s, shift: { ...s.shift, departedAt: Date.now() } } });
+      },
+      setStart(p) {
+        const s = get().session;
+        if (!s) return;
+        const moved = !!s.plan.start && (!p || Math.abs(p.lat - s.plan.start.lat) > 1e-5 || Math.abs(p.lng - s.plan.start.lng) > 1e-5);
+        set({ session: { ...s, start: p, plan: moved && !s.carLoad ? { ...s.plan, stale: true } : s.plan } });
+      },
+      saveLoadPoint(p) {
+        set({ settings: { ...get().settings, loadPoint: p } });
       },
       startDetour(stopId) {
         const s = get().session;
@@ -380,7 +415,12 @@ export function collectionSuggestions(s: Session, learned: Record<string, { labe
 }
 
 /** Sacola física: a registrada em "Carreguei o carro"; antes disso, a sacola planejada. */
-export function physicalBag(s: Session, stopId: string): { index: number; colorKey: string; special?: string; loaded: boolean } | undefined {
+export function physicalBag(s: Session, stopId: string, packageId?: string): { index: number; colorKey: string; special?: string; loaded: boolean } | undefined {
+  // A leitura da etiqueta registra onde o pacote foi guardado de fato.
+  const st = s.stops[stopId];
+  const pk = packageId ?? st?.packages.find(p => p.status === 'pending' && s.sorted?.[p.id])?.id ?? st?.packages.find(p => s.sorted?.[p.id])?.id;
+  const rec = pk ? s.sorted?.[pk] : undefined;
+  if (rec) return { index: rec.bag, colorKey: rec.colorKey, loaded: !!s.carLoad };
   const b = s.carLoad?.find(x => x.stopIds.includes(stopId));
   if (b) return { index: b.index, colorKey: b.colorKey, loaded: true };
   const g = groupOfStop(s, stopId);

@@ -10,7 +10,9 @@ createRoot(document.getElementById('root')!).render(
 );
 
 // PWA: funciona offline depois da primeira abertura (onde service workers são permitidos).
-if (import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext) {
+// No app do iPhone (Capacitor) os arquivos já ficam dentro do aplicativo: não precisa de service worker.
+const nativeApp = !!(window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+if (import.meta.env.PROD && !nativeApp && 'serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {
       /* ambiente sem suporte (ex.: visualização dentro do Claude) */

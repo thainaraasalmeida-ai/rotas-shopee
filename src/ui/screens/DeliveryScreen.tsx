@@ -5,8 +5,9 @@ import { colorOf } from '../../domain/colors';
 import type { Stop } from '../../domain/types';
 import { shortLabel } from '../../domain/packages';
 import { googleMapsLink, wazeLink } from '../../integrations/waze';
-import { currentStopId, plannedStopId, groupOfStop, isPending, nextStopId, orderedStops, pendingVisits, useStore } from '../../store/store';
+import { currentStopId, physicalBag, plannedStopId, groupOfStop, isPending, nextStopId, orderedStops, pendingVisits, useStore } from '../../store/store';
 import '../shosho/shosho.css';
+import { GoalLine } from '../components/GoalLine';
 import { Chips, Modal } from '../components/common';
 import { geoText, StopEditor } from '../components/StopEditor';
 import { LabelCheck } from '../components/LabelCheck';
@@ -122,12 +123,7 @@ export function DeliveryScreen() {
   const isCollection = !!group?.special || cur.packages.length >= threshold;
 
   // Sacola física: a registrada em "Carreguei o carro"; antes disso, a do plano.
-  const bagOf = (id: string) => {
-    const i = session.carLoad?.findIndex(b => b.stopIds.includes(id)) ?? -1;
-    if (i >= 0) return { index: session.carLoad![i].index, colorKey: session.carLoad![i].colorKey };
-    const g = groupOfStop(session, id);
-    return g ? { index: g.index, colorKey: g.colorKey, special: g.special } : undefined;
-  };
+  const bagOf = (id: string) => physicalBag(session, id);
   const bag = bagOf(cur.id);
   const bagColor = bag ? colorOf(bag.colorKey) : undefined;
   const visits = pendingVisits(session);
@@ -138,6 +134,7 @@ export function DeliveryScreen() {
 
   return (
     <div className="ss ss-body">
+      <GoalLine />
       <div className="ss-topline">
         <span>Parada <b>{pos}</b> de {all.length}</span>
         <span>{donePk}/{totalPk} pacotes</span>

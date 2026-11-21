@@ -6,20 +6,21 @@ import { checkIntegrity } from '../../optimize/special';
 import { canPrepareBags, collectionSuggestions, useStore } from '../../store/store';
 import { Chips, MethodBanner, Modal } from '../components/common';
 import { CarLoading } from '../components/CarLoading';
+import { ScanSort } from '../components/ScanSort';
 
 /** Separação dos pacotes por grupo (cor + número), pontos de coleta e busca por etiqueta. */
 export function SortScreen() {
   const session=useStore(s=>s.session)!;
-  const [mode,setMode]=useState<'car'|'search'>('car');
+  const [mode,setMode]=useState<'car'|'scan'>('car');
   if (!canPrepareBags(session)) return <div className="screen stack"><h2>Carregar o carro</h2>
     <p>Calcule o trajeto pelas ruas para saber quais pacotes vão juntos e qual sacola fica na abertura.</p>
     {session.carLoad && <p className="info">O carregamento anterior continua salvo. Em Entregar você pode consultar a sacola onde guardou cada pacote.</p>}
     <a className="btn primary big" href="#rota">Preparar trajeto</a>
   </div>;
   return <div className="screen loading-screen"><h2>Carregar o carro</h2>
-    <div className="load-switch"><button aria-pressed={mode==='car'} onClick={()=>setMode('car')}>Ordem de carga</button>
-      <button aria-pressed={mode==='search'} onClick={()=>setMode('search')}>Buscar pacote</button></div>
-    {mode==='car'?<CarLoading session={session}/>:<BagsList/>}
+    <div className="load-switch"><button aria-pressed={mode==='car'} onClick={()=>setMode('car')}>Por sacola</button>
+      <button aria-pressed={mode==='scan'} onClick={()=>setMode('scan')}>Ler etiqueta</button></div>
+    {mode==='car'?<><CarLoading session={session}/><details className="ss-more" style={{marginTop:12}}><summary>Buscar pacote e pontos de coleta</summary><BagsList/></details></>:<ScanSort/>}
   </div>;
 }
 

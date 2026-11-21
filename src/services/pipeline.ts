@@ -91,7 +91,7 @@ function runInWorker(stops: Stop[], located: Stop[], matrix: TravelMatrix, opts:
 }
 
 /** Matriz de tempos pela malha viária e otimização global. */
-export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: AbortSignal, start?: LatLng, first?: string, apply = true): Promise<{ plan: RoutePlan }> {
+export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: AbortSignal, start?: LatLng & { label?: string }, first?: string, apply = true): Promise<{ plan: RoutePlan }> {
   const { session, settings, setPlan } = useStore.getState();
   if (!session) throw new Error('Nenhuma rota importada.');
   signal?.throwIfAborted();
@@ -101,7 +101,7 @@ export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: 
   if (located.length !== stops.length) throw new Error(`Faltam localizar ${stops.length - located.length} parada(s). A ordem atual foi mantida.`);
   if (located.length < 2) throw new Error('Localize os endereços antes de otimizar (mínimo 2 paradas com localização).');
   const points: LatLng[] = located.map((s) => ({ lat: s.geo!.lat, lng: s.geo!.lng }));
-  if (start) points.push(start);
+  if (start) points.push({ lat: start.lat, lng: start.lng });
 
   onProgress({ step: 'Consultando tempos de carro pela malha viária', done: 0, total: 1 });
   let matrix: TravelMatrix;
@@ -122,6 +122,7 @@ export async function optimizeRoute(onProgress: (p: Progress) => void, signal?: 
   signal?.throwIfAborted();
   const latest = useStore.getState().session;
   if (latest !== session || useStore.getState().settings !== settings) throw new Error('A rota mudou durante o cálculo. Recalcule as pendências.');
+  if (start) { plan.start = { lat: start.lat, lng: start.lng, label: start.label ?? 'Posição atual' }; plan.notes.unshift(`Saída: ${plan.start.label}. O trajeto até a primeira entrega entrou no cálculo.`); }
   const completed = all.filter(stop => !isPending(stop));
   plan.order = [...completed.map(stop => stop.id), ...plan.order];
   if (session.carLoad) {

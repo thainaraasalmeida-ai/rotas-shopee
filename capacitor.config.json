@@ -1,0 +1,13 @@
+{
+  "appId": "com.thainara.shosho",
+  "appName": "ShoSho",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#f5f6f2",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "server": {
+    "allowNavigation": []
+  }
+}

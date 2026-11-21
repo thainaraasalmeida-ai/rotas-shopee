@@ -114,6 +114,8 @@ export function optimizedPlan(stops: Stop[], located: Stop[], matrix: TravelMatr
     groups,
     createdAt: Date.now(),
     totalSeconds: travelTime(orderIdx, matrix.durations, opts.fromStart),
+    firstSeconds: opts.fromStart && orderIdx.length ? opts.fromStart[orderIdx[0]] : undefined,
+    legSeconds: Object.fromEntries(orderIdx.map((i, k) => [located[i].id, k === 0 ? (opts.fromStart?.[i] ?? 0) : matrix.durations[orderIdx[k - 1]][i]])),
     importedSeconds,
     notes,
   };
